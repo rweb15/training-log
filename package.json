@@ -4,7 +4,7 @@
   "private": true,
   "description": "Rob's training log - habit calendar, lift and cardio tracking",
   "scripts": {
-    "sync": "cp node_modules/jspdf/dist/jspdf.umd.min.js www/vendor/ && npx cap sync android"
+    "sync": "mkdir -p www/vendor && cp node_modules/jspdf/dist/jspdf.umd.min.js www/vendor/ && npx cap sync android"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",
