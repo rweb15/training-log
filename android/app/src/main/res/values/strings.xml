@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Training Log</string>
+    <string name="title_activity_main">Training Log</string>
+    <string name="package_name">ca.robwebster.traininglog</string>
+    <string name="custom_url_scheme">ca.robwebster.traininglog</string>
+</resources>

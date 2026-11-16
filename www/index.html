@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0f1214">
+<title>Training Log</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="top">
+  <div class="row between">
+    <h1 id="title">Training Log</h1>
+    <span id="progName" class="pill"></span>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="sStreak">0</b><span>Streak</span></div>
+    <div class="stat"><b id="sWeek">0/0</b><span>This week</span></div>
+    <div class="stat"><b id="sCardio">0</b><span>Cardio min/wk</span></div>
+    <div class="stat"><b id="sTotal">0</b><span>Sessions</span></div>
+  </div>
+</header>
+<main id="view"></main>
+<div id="timer" class="timer hidden">
+  <div class="tleft"><span class="lbl">Rest</span><b id="tTime">1:30</b></div>
+  <div class="tbar"><i id="tFill"></i></div>
+  <button data-act="t15">+15</button>
+  <button data-act="tskip">Skip</button>
+</div>
+<nav id="tabs">
+  <button data-tab="log" class="on"><span>🏋️</span>Log</button>
+  <button data-tab="cal"><span>📅</span>Calendar</button>
+  <button data-tab="prog"><span>📈</span>Progress</button>
+  <button data-tab="programs"><span>📋</span>Programs</button>
+  <button data-tab="more"><span>⚙️</span>More</button>
+</nav>
+<div id="sheet" class="sheet hidden"><div class="sheetIn" id="sheetIn"></div></div>
+<div id="toast"></div>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="programs.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
