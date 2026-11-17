@@ -115,3 +115,7 @@ label.sw input{width:22px;height:22px;accent-color:var(--acc)}
 .daypick button.on{background:var(--acc);color:#05200f;border-color:var(--acc)}
 .schedgrid{display:grid;grid-template-columns:44px 1fr;gap:6px;align-items:center}
 .err{color:var(--bad);font-size:13px;white-space:pre-wrap}
+.htiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.htiles .kv{padding:8px}
+.htiles .kv b{font-size:16px}
+.htiles .kv span{font-size:11px}

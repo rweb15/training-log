@@ -3,7 +3,7 @@
 var TP = window.TL_PROGRAMS;
 var Cap = window.Capacitor, isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 var P = (Cap && Cap.Plugins) || {};
-var APP_VERSION = "1.0.0";
+var APP_VERSION = "1.1.0";
 
 // ================= Dates =================
 var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -82,7 +82,7 @@ function ensure(date) { if (!S.days[date]) S.days[date] = blank(date); return S.
 function dayProg(d) { return compiled[S.programs[d.programId] ? d.programId : S.activeProgramId]; }
 function dayWorkout(d) { var c = dayProg(d); return c.workouts[d.workout] || null; }
 function isRestDay(date) { var d = get(date); if (d) return d.workout === "rest"; return scheduledWorkout(date) === "rest"; }
-function startDate() { var f = S.programHistory.map(function (x) { return x.from; }).concat(Object.keys(S.days)).sort(); return f[0] || todayS(); }
+function startDate() { var f = S.programHistory.map(function (x) { return x.from; }).concat(Object.keys(S.days).filter(function (k) { var d = S.days[k]; return d.liftDone || d.absDone || Object.keys(d.ex || {}).length; })).sort(); return f[0] || todayS(); }
 function tracked(date) { return date >= startDate(); }
 function score(d) { if (!d) return 0; return (d.liftDone ? 1 : 0) + ((+d.cardioMin || 0) > 0 ? 1 : 0) + (d.absDone ? 1 : 0); }
 
@@ -206,6 +206,7 @@ function renderLog() {
   h += '<div class="card"><div class="row between"><b>Cardio</b><span class="mute small">minutes</span></div><div class="row" style="margin-top:10px;gap:8px">' +
     '<div class="numrow"><button class="pm" data-act="cm" data-v="-5">−5</button><input class="field" type="number" inputmode="numeric" id="cardioMin" value="' + (cm || "") + '" placeholder="0"><button class="pm" data-act="cm" data-v="5">+5</button></div>' +
     '<select class="field" id="cardioType" style="flex:1;min-width:0">' + CARDIO_TYPES.map(function (x) { return '<option' + (x === d.cardioType ? " selected" : "") + '>' + x + '</option>'; }).join("") + '</select></div></div>';
+  h += healthCard(d);
   var W = dayWorkout(d);
   if (d.workout === "rest") {
     h += '<div class="card restcard"><div class="big">😴</div><b>Rest day</b><div class="mute small">' + esc(W && W.focus ? W.focus : "Recover. Walk if you feel like it.") + '</div></div>';
@@ -218,6 +219,7 @@ function renderLog() {
   }
   h += '<h2>Body weight & notes</h2><div class="card"><div class="row" style="gap:10px;margin-bottom:10px"><span class="lbl" style="width:96px">Body wt (lb)</span><input class="field" type="number" inputmode="decimal" id="bodyWeight" value="' + (d.bodyWeight || "") + '" placeholder="optional" style="flex:1"></div><textarea class="field" id="notes" placeholder="How did it feel? PRs, aches, energy…">' + esc(d.notes) + '</textarea></div>';
   view.innerHTML = h;
+  if (healthOn()) { var dd = cur; syncHealth(dd).then(function (ch) { if (ch && ui.tab === "log" && ui.cur === dd) render(); }); }
 }
 function setsFor(d, e) { return (d.ex && d.ex[e.id]) || e.reps.map(function () { return { w: "", r: "", d: false }; }); }
 function exerciseGroup(d, g) {
@@ -348,6 +350,15 @@ function renderProg() {
   var t = todayS(), wk = weekStart(t), bars = [];
   for (var i = 7; i >= 0; i--) { var ws = addDays(wk, -7 * i), sum = 0; for (var j = 0; j < 7; j++) { var d = get(addDays(ws, j)); if (d) sum += (+d.cardioMin || 0); } bars.push({ x: short(ws), y: sum }); }
   h += '<h2>Cardio minutes per week</h2><div class="card">' + barChart(bars, "#5fb3f0") + '</div>';
+  var hk = keys.filter(function (k) { return S.days[k].health; });
+  if (hk.length) {
+    var rh = hk.filter(function (k) { return S.days[k].health.restingHr; }).map(function (k) { return { x: short(k), y: S.days[k].health.restingHr }; });
+    if (rh.length) h += '<h2>Resting heart rate</h2><div class="card">' + lineChart(rh.slice(-30), "#e5675b") + '<div class="mute small" style="margin-top:6px">Trending down over the weeks = your heart is getting fitter.</div></div>';
+    var stp = [], slp = [];
+    for (var di = 13; di >= 0; di--) { var dk = addDays(t, -di), dh = get(dk) && get(dk).health; stp.push({ x: short(dk), y: dh && dh.steps ? dh.steps : 0 }); slp.push({ x: short(dk), y: dh && dh.sleep ? Math.round(dh.sleep.min / 6) / 10 : 0 }); }
+    if (stp.some(function (p) { return p.y; })) h += '<h2>Steps, last 14 days</h2><div class="card">' + barChart(stp.map(function (p) { return { x: p.x.split("/")[1], y: p.y }; }), "#3ddc84") + '</div>';
+    if (slp.some(function (p) { return p.y; })) h += '<h2>Sleep hours, last 14 days</h2><div class="card">' + lineChart(slp.filter(function (p) { return p.y; }), "#a78bfa") + '</div>';
+  }
   var bwp = keys.filter(function (k) { return S.days[k].bodyWeight; }).map(function (k) { return { x: short(k), y: +S.days[k].bodyWeight }; });
   h += '<h2>Body weight</h2><div class="card">' + lineChart(bwp.slice(-30), "#f5b84b", S.settings.bodyGoal ? +S.settings.bodyGoal : null) + '</div>';
   view.innerHTML = h;
@@ -439,6 +450,12 @@ function renderMore() {
   h += '<div class="row between" style="padding:6px 0"><span class="small">Time</span><input class="field" type="time" id="remindTime" value="' + st.remindTime + '" style="width:130px"></div><div class="daypick" style="margin-top:6px">';
   [0, 1, 2, 3, 4, 5, 6].forEach(function (i) { h += '<button data-act="rday" data-v="' + i + '" class="' + (st.remindDays.indexOf(i) >= 0 ? "on" : "") + '">' + DOW[i].slice(0, 2) + '</button>'; });
   h += '</div>' + (isNative ? "" : '<div class="small mute" style="margin-top:8px">Reminders work in the installed Android app.</div>') + '</div>';
+
+  h += '<h2>Samsung Health</h2><div class="card">';
+  if (!isNative || !H) h += '<div class="small mute">Works in the installed Android app. It reads heart rate, sleep, steps, blood oxygen, weight and workouts from Samsung Health through Health Connect.</div>';
+  else if (!st.healthOn) h += '<div class="small" style="line-height:1.6;margin-bottom:10px">Pull in your heart rate, resting HR, HRV, blood oxygen, sleep, steps, calories, weight and the workouts your watch records.<br><br><b>First, in Samsung Health:</b> ⋮ → Settings → <b>Health Connect</b>, and allow Samsung Health to share your data.</div><button class="btn full" data-act="hconnect">Connect Samsung Health</button>';
+  else h += '<div class="row between"><span>✅ Connected</span><span class="small mute">' + ((st.healthGranted || []).length) + ' data types allowed</span></div><div class="small mute" style="margin:6px 0 10px">Each day syncs when you open it. Cardio and body weight fill in automatically if you haven\'t entered them.</div><div class="row wrap" style="gap:8px"><button class="btn sec sm" data-act="hback">Re-sync last 30 days</button><button class="btn sec sm" data-act="hperm">Permissions</button><button class="btn sec sm" data-act="hoff">Disconnect</button></div>';
+  h += '</div>';
 
   h += '<h2>Profile</h2><div class="card"><div class="row between" style="padding:4px 0"><span class="small">Name on reports</span><input class="field" id="pfName" value="' + esc(st.name || "") + '" style="width:60%"></div><div class="row between" style="padding:4px 0"><span class="small">Body weight goal (lb)</span><input class="field" type="number" id="bodyGoal" value="' + (st.bodyGoal || "") + '" placeholder="optional" style="width:110px;text-align:center"></div></div>';
 
@@ -614,11 +631,22 @@ function buildReport(from, to, includeLog) {
     }
   }
 
+  // health
+  var hds = dates.filter(function (x) { var d = get(x); return d && d.health; }).map(function (x) { return get(x); });
+  if (hds.length) {
+    heading("Health (from Samsung Health)");
+    function stat(fn, unit, dec) { var v = hds.map(fn).filter(function (x) { return x != null && isFinite(x) && x > 0; }); if (!v.length) return null; var f = function (n) { return dec ? n.toFixed(dec) : Math.round(n).toLocaleString(); }; return [f(v.reduce(function (a, c) { return a + c; }, 0) / v.length) + unit, f(Math.min.apply(null, v)) + unit, f(Math.max.apply(null, v)) + unit, String(v.length)]; }
+    var rowsH = [["Resting heart rate", function (d) { return d.health.restingHr; }, " bpm"], ["Average heart rate", function (d) { return d.health.hr && d.health.hr.avg; }, " bpm"], ["Max heart rate", function (d) { return d.health.hr && d.health.hr.max; }, " bpm"], ["Steps per day", function (d) { return d.health.steps; }, ""], ["Active calories", function (d) { return d.health.activeCal; }, " kcal"], ["Sleep per night", function (d) { return d.health.sleep && d.health.sleep.min / 60; }, " h", 1], ["Blood oxygen", function (d) { return d.health.spo2; }, "%", 1], ["HRV", function (d) { return d.health.hrv; }, " ms"]].map(function (r) { var st = stat(r[1], r[2], r[3]); return st ? [r[0]].concat(st) : null; }).filter(Boolean);
+    if (rowsH.length) table(["Measure", "Average", "Lowest", "Highest", "Days"], rowsH, [170, 92, 92, 92, 86]);
+    var hw = []; dates.forEach(function (x) { var d = get(x); if (d && d.health && d.health.workouts) d.health.workouts.forEach(function (w) { hw.push([fmtShort(x), w.name, w.min + " min", w.avgHr ? w.avgHr + " / " + w.maxHr + " bpm" : "-", w.kcal ? w.kcal + " kcal" : "-"]); }); });
+    if (hw.length) { y += 4; table(["Date", "Recorded workout", "Time", "Avg / max HR", "Calories"], hw, [70, 170, 70, 120, 102]); }
+  }
+
   // session log
   if (includeLog) {
     need(190); heading("Session log");
     dates.slice().reverse().forEach(function (s) {
-      var d = get(s); if (!d || (!score(d) && !Object.keys(d.ex || {}).length && !d.notes)) return;
+      var d = get(s); if (!d || (!score(d) && !Object.keys(d.ex || {}).length && !d.notes && !d.health)) return;
       var W = dayWorkout(d), lines = [];
       if (+d.cardioMin > 0) lines.push("Cardio: " + d.cardioMin + " min " + d.cardioType.toLowerCase());
       var order = []; if (W) W.groups.forEach(function (g) { g.ex.forEach(function (e) { order.push(e.id); }); });
@@ -631,6 +659,7 @@ function buildReport(from, to, includeLog) {
         lines.push(e.n + ": " + txt);
       });
       if (d.bodyWeight) lines.push("Body weight: " + d.bodyWeight + " lb");
+      if (d.health) { var hh = d.health, hp = []; if (hh.restingHr) hp.push("resting HR " + hh.restingHr); if (hh.hr) hp.push("HR avg " + hh.hr.avg + " / max " + hh.hr.max); if (hh.steps) hp.push(hh.steps.toLocaleString() + " steps"); if (hh.sleep) hp.push("sleep " + fmtMin(hh.sleep.min)); if (hh.spo2) hp.push("SpO2 " + hh.spo2 + "%"); if (hp.length) lines.push("Health: " + hp.join(", ")); (hh.workouts || []).forEach(function (w) { lines.push("Watch: " + w.name + " " + w.min + " min" + (w.avgHr ? ", avg " + w.avgHr + " / max " + w.maxHr + " bpm" : "") + (w.kcal ? ", " + w.kcal + " kcal" : "")); }); }
       font(9.5, "normal"); var wrapped = []; lines.forEach(function (l) { wrapped = wrapped.concat(doc.splitTextToSize(pdfText(l), CW - 14)); });
       var notes = d.notes ? doc.splitTextToSize(pdfText("Notes: " + d.notes), CW - 14) : [];
       need(22 + wrapped.length * 12 + notes.length * 12);
@@ -647,6 +676,116 @@ function buildReport(from, to, includeLog) {
   var n = doc.getNumberOfPages();
   for (var pg = 1; pg <= n; pg++) { doc.setPage(pg); font(8); col(MU); doc.text("Training Log  ·  page " + pg + " of " + n, PW / 2, 776, { align: "center" }); }
   return doc;
+}
+
+// ================= Health (Samsung Health -> Health Connect) =================
+var H = P.Health;
+var HEALTH_READ = ["heartRate", "restingHeartRate", "heartRateVariability", "oxygenSaturation", "respiratoryRate", "steps", "distance", "calories", "totalCalories", "sleep", "weight", "bodyFat", "vo2Max", "bloodPressure", "workouts"];
+var WK_NAMES = { bikingStationary: "Stationary bike", cycling: "Cycling", walking: "Walk", running: "Run", runningTreadmill: "Treadmill", elliptical: "Elliptical", rowingMachine: "Rower", rowing: "Rowing", stairClimbingMachine: "Stair climber", stairClimbing: "Stairs", weightlifting: "Weight training", strengthTraining: "Strength training", traditionalStrengthTraining: "Strength training", functionalStrengthTraining: "Strength training", hockey: "Hockey", iceHockey: "Hockey", golf: "Golf", hiking: "Hike", swimming: "Swim", swimmingPool: "Swim", highIntensityIntervalTraining: "HIIT", stretching: "Stretching", yoga: "Yoga", other: "Workout" };
+var WK_CARDIO = { bikingStationary: "Stationary bike", cycling: "Other", walking: "Walk", running: "Other", runningTreadmill: "Treadmill", elliptical: "Elliptical", rowingMachine: "Rower", stairClimbingMachine: "Stair climber", stairClimbing: "Stair climber", hockey: "Hockey", iceHockey: "Hockey", golf: "Golf", hiking: "Walk", swimming: "Other", swimmingPool: "Other", highIntensityIntervalTraining: "Other" };
+function wkName(t) { return WK_NAMES[t] || String(t || "Workout").replace(/([A-Z])/g, " $1").replace(/^./, function (c) { return c.toUpperCase(); }); }
+function healthOn() { return isNative && !!H && !!S.settings.healthOn; }
+function fmtTime(iso) { var d = new Date(iso), h = d.getHours(), m = d.getMinutes(); return ((h + 11) % 12 + 1) + ":" + pad(m) + (h < 12 ? " AM" : " PM"); }
+function fmtMin(m) { m = Math.round(m); return m >= 60 ? Math.floor(m / 60) + "h " + pad(m % 60) + "m" : m + " min"; }
+var hBusy = {};
+function syncHealth(date, force) {
+  if (!healthOn()) return Promise.resolve(false);
+  var d0 = get(date), h0 = d0 && d0.health, t = todayS();
+  if (date > t) return Promise.resolve(false);
+  if (!force && h0 && h0.syncedAt && (h0.final || Date.now() - h0.syncedAt < 10 * 60e3)) return Promise.resolve(false);
+  if (hBusy[date]) return hBusy[date];
+  var s0 = pd(date), s1 = pd(addDays(date, 1)), b = [s0.toISOString(), s1.toISOString()];
+  var sleepB = [new Date(s0.getTime() - 12 * 3600e3).toISOString(), new Date(s0.getTime() + 18 * 3600e3).toISOString()];
+  function q(fn) { try { return fn().catch(function () { return null; }); } catch (e) { return Promise.resolve(null); } }
+  function agg(type) { return q(function () { return H.queryAggregated({ dataType: type, startDate: b[0], endDate: b[1], bucket: "day", aggregation: "sum" }); }); }
+  function rs(type, s, e, lim) { return q(function () { return H.readSamples({ dataType: type, startDate: s || b[0], endDate: e || b[1], limit: lim || 200, ascending: true }); }); }
+  function list(r) { return (r && r.samples) || []; }
+  function sum(r) { var a = list(r); return a.length ? a.reduce(function (x, y) { return x + (+y.value || 0); }, 0) : null; }
+  function mean(r) { var v = list(r).map(function (x) { return +x.value; }).filter(isFinite); return v.length ? v.reduce(function (x, y) { return x + y; }, 0) / v.length : null; }
+  function last(r) { var a = list(r); return a.length ? a[a.length - 1] : null; }
+  hBusy[date] = Promise.all([
+    agg("steps"), agg("calories"), agg("totalCalories"), agg("distance"),
+    rs("heartRate", null, null, 2000), rs("restingHeartRate"), rs("heartRateVariability"), rs("oxygenSaturation"), rs("respiratoryRate"),
+    rs("weight"), rs("bodyFat"), rs("vo2Max"), rs("bloodPressure"), rs("sleep", sleepB[0], sleepB[1], 20),
+    q(function () { return H.queryWorkouts({ startDate: b[0], endDate: b[1], limit: 50, ascending: true }); })
+  ]).then(function (r) {
+    var o = { syncedAt: Date.now(), final: date < addDays(t, -1) }, v, x;
+    if ((v = sum(r[0])) != null && v > 0) o.steps = Math.round(v);
+    if ((v = sum(r[1])) != null && v > 0) o.activeCal = Math.round(v);
+    if ((v = sum(r[2])) != null && v > 0) o.totalCal = Math.round(v);
+    if ((v = sum(r[3])) != null && v > 0) o.distanceKm = Math.round(v / 100) / 10;
+    var hr = list(r[4]).map(function (s) { return { t: new Date(s.startDate).getTime(), v: +s.value }; }).filter(function (s) { return s.v > 0; });
+    if (hr.length) { var hv = hr.map(function (s) { return s.v; }); o.hr = { min: Math.min.apply(null, hv), max: Math.max.apply(null, hv), avg: Math.round(hv.reduce(function (a, c) { return a + c; }, 0) / hv.length), n: hv.length }; }
+    if ((x = last(r[5]))) o.restingHr = Math.round(+x.value);
+    if ((v = mean(r[6])) != null) o.hrv = Math.round(v);
+    if ((v = mean(r[7])) != null) o.spo2 = Math.round(v * 10) / 10;
+    if ((v = mean(r[8])) != null) o.respRate = Math.round(v * 10) / 10;
+    if ((x = last(r[9]))) o.weightLb = Math.round(+x.value * 2.20462 * 10) / 10;
+    if ((x = last(r[10]))) o.bodyFat = Math.round(+x.value * 10) / 10;
+    if ((x = last(r[11]))) o.vo2max = Math.round(+x.value * 10) / 10;
+    if ((x = last(r[12])) && x.systolic) o.bp = Math.round(x.systolic) + "/" + Math.round(x.diastolic);
+    var sl = list(r[13]).filter(function (s) { var e = new Date(s.endDate); return e >= s0 && e < new Date(s0.getTime() + 18 * 3600e3); });
+    if (sl.length) {
+      var asleep = 0, deep = 0, rem = 0;
+      sl.forEach(function (s) { if (s.stages && s.stages.length) s.stages.forEach(function (st) { if (st.stage !== "awake" && st.stage !== "inBed") asleep += st.durationMinutes; if (st.stage === "deep") deep += st.durationMinutes; if (st.stage === "rem") rem += st.durationMinutes; }); else asleep += +s.value || 0; });
+      o.sleep = { min: Math.round(asleep), deep: Math.round(deep), rem: Math.round(rem), start: sl[0].startDate, end: sl[sl.length - 1].endDate };
+    }
+    var wk = ((r[14] && r[14].workouts) || []).map(function (w) {
+      var st = new Date(w.startDate).getTime(), en = new Date(w.endDate).getTime(), ws = hr.filter(function (s) { return s.t >= st && s.t <= en; }).map(function (s) { return s.v; });
+      return { type: w.workoutType, name: wkName(w.workoutType), start: w.startDate, end: w.endDate, min: Math.round((en - st) / 60000), kcal: w.totalEnergyBurned ? Math.round(w.totalEnergyBurned) : null, avgHr: ws.length ? Math.round(ws.reduce(function (a, c) { return a + c; }, 0) / ws.length) : null, maxHr: ws.length ? Math.max.apply(null, ws) : null };
+    }).filter(function (w) { return w.min > 0; });
+    if (wk.length) o.workouts = wk;
+    var d = ensure(date); d.health = o;
+    // fill in what the day is missing
+    if (o.weightLb && !d.bodyWeight) { d.bodyWeight = o.weightLb; d.bodyWeightSrc = "Samsung Health"; }
+    var cw = wk.filter(function (w) { return WK_CARDIO[w.type]; });
+    if (cw.length && !(+d.cardioMin) && !d.cardioManual) {
+      d.cardioMin = cw.reduce(function (a, w) { return a + w.min; }, 0); d.cardioType = WK_CARDIO[cw[0].type]; d.cardioSrc = "Samsung Health";
+    }
+    delete hBusy[date]; save(); return true;
+  }).catch(function (e) { delete hBusy[date]; return false; });
+  return hBusy[date];
+}
+function connectHealth() {
+  if (!isNative || !H) { toast("Samsung Health works in the installed Android app"); return; }
+  H.isAvailable().then(function (a) {
+    if (!a.available) {
+      openSheet('<h3>Health Connect is needed</h3><div class="small" style="line-height:1.6;margin-bottom:14px">Samsung Health shares its data with other apps through <b>Health Connect</b>. ' + esc(a.reason || "") + '<br><br>On Android 14 or newer it\'s built in (Settings → Security and privacy → Privacy → Health Connect). On older phones, install <b>Health Connect by Android</b> from the Play Store, then come back and tap Connect again.</div><button class="btn full" data-act="sclose">OK</button>');
+      return;
+    }
+    return H.requestAuthorization({ read: HEALTH_READ, write: [], requestHistoryAccess: true }).then(function (st) {
+      var ok = (st && st.readAuthorized) || [];
+      if (!ok.length) { toast("No health permissions were allowed"); return; }
+      S.settings.healthOn = true; S.settings.healthGranted = ok; save();
+      toast("Connected: " + ok.length + " data types");
+      var days = []; for (var i = 0; i < 14; i++) days.push(addDays(todayS(), -i));
+      days.reduce(function (p, d) { return p.then(function () { return syncHealth(d, true); }); }, Promise.resolve()).then(render);
+      render();
+    });
+  }).catch(function (e) { toast("Couldn't connect: " + (e && e.message || e)); });
+}
+function healthCard(d) {
+  if (!isNative || !H) return "";
+  if (!S.settings.healthOn) return ui.cur === todayS() && S.settings.healthPrompt !== false ? '<div class="card"><div class="row between"><div><b>❤️ Connect Samsung Health</b><div class="small mute">Heart rate, sleep, steps and workouts on each day</div></div><button class="btn sm" data-act="hconnect">Connect</button></div></div>' : "";
+  var h = d.health, out = '<div class="card"><div class="row between"><b>❤️ Samsung Health</b><button class="btn sec sm" data-act="hsync">Sync</button></div>';
+  if (!h || (!h.hr && !h.steps && !h.sleep && !h.restingHr && !h.workouts)) return out + '<div class="small mute" style="margin-top:8px">' + (h ? "No Samsung Health data for this day yet." : "Syncing…") + '</div></div>';
+  var tiles = [];
+  if (h.restingHr) tiles.push([h.restingHr + " bpm", "Resting HR"]);
+  if (h.hr) tiles.push([h.hr.avg + " bpm", "Avg HR"], [h.hr.max + " bpm", "Max HR"]);
+  if (h.steps) tiles.push([h.steps.toLocaleString(), "Steps"]);
+  if (h.activeCal) tiles.push([h.activeCal.toLocaleString(), "Active kcal"]);
+  if (h.sleep) tiles.push([fmtMin(h.sleep.min), "Sleep"]);
+  if (h.spo2) tiles.push([h.spo2 + "%", "Blood oxygen"]);
+  if (h.hrv) tiles.push([h.hrv + " ms", "HRV"]);
+  if (h.respRate) tiles.push([h.respRate, "Breaths/min"]);
+  if (h.bp) tiles.push([h.bp, "Blood pressure"]);
+  if (h.weightLb) tiles.push([h.weightLb + " lb", "Weight"]);
+  if (h.bodyFat) tiles.push([h.bodyFat + "%", "Body fat"]);
+  if (h.vo2max) tiles.push([h.vo2max, "VO2 max"]);
+  out += '<div class="htiles">' + tiles.map(function (t) { return '<div class="kv"><b>' + esc(t[0]) + '</b><span>' + esc(t[1]) + '</span></div>'; }).join("") + '</div>';
+  if (h.workouts) out += '<div class="lbl" style="margin:10px 0 4px">Workouts recorded</div>' + h.workouts.map(function (w) { return '<div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)"><b>' + esc(w.name) + '</b> · ' + fmtTime(w.start) + ' · ' + w.min + ' min' + (w.avgHr ? ' · avg ' + w.avgHr + ' / max ' + w.maxHr + ' bpm' : '') + (w.kcal ? ' · ' + w.kcal + ' kcal' : '') + '</div>'; }).join("");
+  if (d.cardioSrc && +d.cardioMin) out += '<div class="small" style="color:var(--acc);margin-top:6px">Cardio filled in from Samsung Health. Edit it above if it\'s wrong.</div>';
+  return out + '<div class="small mute" style="margin-top:6px">Updated ' + fmtTime(new Date(h.syncedAt).toISOString()) + '</div></div>';
 }
 
 // ================= Rest timer =================
@@ -715,13 +854,19 @@ function onAct(b, ev) {
     case "rday": var v = +b.getAttribute("data-v"), arr = S.settings.remindDays, ix = arr.indexOf(v); if (ix >= 0) arr.splice(ix, 1); else arr.push(v); save(); scheduleReminders(); return render();
     case "export": var name = "training-log-backup-" + todayS() + ".json"; return shareFile(name, JSON.stringify(S, null, 1), "application/json", true);
     case "import": return document.getElementById("importFile").click();
+    case "hconnect": return connectHealth();
+    case "hsync": toast("Syncing Samsung Health…"); return syncHealth(ui.cur, true).then(function (ch) { render(); toast(ch ? "Synced" : "Nothing new"); });
+    case "hperm": if (H) H.openHealthConnectSettings().catch(function () { toast("Couldn't open Health Connect"); }); return;
+    case "hback": toast("Syncing the last 30 days…"); var dl = []; for (var q = 0; q < 30; q++) dl.push(addDays(todayS(), -q)); dl.reduce(function (p, x) { return p.then(function () { return syncHealth(x, true); }); }, Promise.resolve()).then(function () { render(); toast("Synced 30 days"); }); return;
+    case "hoff": S.settings.healthOn = false; save(); toast("Samsung Health disconnected"); return render();
+    case "hdismiss": S.settings.healthPrompt = false; save(); return render();
   }
   // day edits
   var d = ensure(ui.cur);
   if (act === "wk") d.workout = b.getAttribute("data-w");
   else if (act === "lift") d.liftDone = !d.liftDone;
   else if (act === "abs") d.absDone = !d.absDone;
-  else if (act === "cm") d.cardioMin = Math.max(0, (+d.cardioMin || 0) + (+b.getAttribute("data-v")));
+  else if (act === "cm") { d.cardioMin = Math.max(0, (+d.cardioMin || 0) + (+b.getAttribute("data-v"))); d.cardioManual = true; delete d.cardioSrc; }
   else if (act === "set") {
     var e = findInDay(d, b.getAttribute("data-ex")), i = +b.getAttribute("data-i"), sets = getSets(d, e), s = sets[i];
     var row = b.parentNode; row.querySelectorAll("input").forEach(function (inp) { s[inp.getAttribute("data-f")] = inp.value; });
@@ -746,7 +891,7 @@ document.getElementById("sheetIn").addEventListener("click", clickHandler);
 view.addEventListener("input", function (ev) {
   var t = ev.target;
   if (t.matches("input[data-ex]")) { var d = ensure(ui.cur), e = findInDay(d, t.getAttribute("data-ex")); getSets(d, e)[+t.getAttribute("data-i")][t.getAttribute("data-f")] = t.value; save(); return; }
-  if (t.id === "cardioMin") { ensure(ui.cur).cardioMin = Math.max(0, +t.value || 0); save(); return; }
+  if (t.id === "cardioMin") { var dc = ensure(ui.cur); dc.cardioMin = Math.max(0, +t.value || 0); dc.cardioManual = true; delete dc.cardioSrc; save(); return; }
   if (t.id === "bodyWeight") { ensure(ui.cur).bodyWeight = t.value ? +t.value : null; save(); return; }
   if (t.id === "notes") { ensure(ui.cur).notes = t.value; save(); return; }
   if (t.id === "pfName") { S.settings.name = t.value; save(); return; }
@@ -822,9 +967,20 @@ if (isNative && P.App) {
   });
   P.App.addListener("appStateChange", function (s) {
     if (!s.isActive) scheduleTimerNotif();
-    else { cancelTimerNotif(); if (ui.cur < todayS() && ui.tab === "log" && !get(todayS())) { /* new day */ } updateHeader(); render(); }
+    else { cancelTimerNotif(); checkDay(); updateHeader(); render(); if (healthOn()) syncHealth(ui.cur).then(function (ch) { if (ch) render(); }); }
   });
 }
+
+// ================= Day rollover =================
+// The app reads the phone's own date, time and time zone. If it's left open past midnight, move to the new day.
+var lastToday = todayS();
+function checkDay() {
+  var t = todayS(); if (t === lastToday) return;
+  if (ui.cur === lastToday) ui.cur = t;
+  lastToday = t; if (S) { render(); if (healthOn()) syncHealth(addDays(t, -1), true).then(function () { return syncHealth(t); }).then(function (ch) { if (ch) render(); }); }
+}
+setInterval(checkDay, 60000);
+document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDay(); });
 
 // ================= Boot =================
 load().then(function (raw) {
@@ -832,6 +988,7 @@ load().then(function (raw) {
   S = migrate(st || defaultState());
   compileAll(); save(); render();
   if (S.settings.remindOn) scheduleReminders();
+  if (healthOn()) syncHealth(addDays(todayS(), -1)).then(function () { return syncHealth(todayS()); }).then(function (ch) { if (ch) render(); });
 }).catch(function (e) { view.innerHTML = '<div class="card err">Failed to start: ' + esc(e && e.message) + '</div>'; });
 
 window.TL_DEBUG = { get S() { return S; }, buildReport: buildReport };
