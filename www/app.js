@@ -3,7 +3,7 @@
 var TP = window.TL_PROGRAMS;
 var Cap = window.Capacitor, isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 var P = (Cap && Cap.Plugins) || {};
-var APP_VERSION = "1.2.0";
+var APP_VERSION = "1.3.0";
 
 // ================= Dates =================
 var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -35,7 +35,7 @@ function defaultState() {
     programHistory: [{ programId: "level-1", from: "2026-11-16" }],
     days: {},
     exNames: {},
-    settings: { name: "Rob Webster", restOn: true, restSec: 90, restPowerSec: 150, remindOn: false, remindTime: "05:00", remindDays: [1, 2, 3, 4, 5, 6], bodyGoal: null }
+    settings: { name: "Rob Webster", restOn: true, restSec: 90, restPowerSec: 150, remindOn: false, remindTime: "05:00", remindDays: [1, 2, 3, 4, 5, 6], bodyGoal: null, age: null, sex: "M", heightIn: 75, weightLb: 275 }
   };
   TP.BUILTIN.forEach(function (p) { st.programs[p.id] = clone(p); });
   // Rob's first session (Mon Nov 16, 2026), carried over from the web tracker
@@ -206,6 +206,7 @@ function renderLog() {
   h += '<div class="card"><div class="row between"><b>Cardio</b><span class="mute small">minutes</span></div><div class="row" style="margin-top:10px;gap:8px">' +
     '<div class="numrow"><button class="pm" data-act="cm" data-v="-5">−5</button><input class="field" type="number" inputmode="numeric" id="cardioMin" value="' + (cm || "") + '" placeholder="0"><button class="pm" data-act="cm" data-v="5">+5</button></div>' +
     '<select class="field" id="cardioType" style="flex:1;min-width:0">' + CARDIO_TYPES.map(function (x) { return '<option' + (x === d.cardioType ? " selected" : "") + '>' + x + '</option>'; }).join("") + '</select></div></div>';
+  h += calCard(d);
   h += healthCard(d);
   var W = dayWorkout(d);
   if (d.workout === "rest") {
@@ -236,6 +237,7 @@ function exerciseGroup(d, g) {
       else h += '<div class="last">Last (' + fmtShort(last.date) + '): ' + ls.map(function (s) { return (e.bw ? "" : (s.w || "–") + "×") + (s.r || "–"); }).join(" · ") + '</div>';
     }
     if (sug && !all) h += '<div class="hint">' + esc(sug.text) + '</div>';
+    var xc = exCalories(d, e); if (xc) h += '<div class="hrline" style="color:var(--warn)">🔥 ~' + xc.kcal + ' kcal' + (xc.how === "hr" ? " (from heart rate)" : " (estimate)") + '</div>';
     var xh = d.liftHr && d.liftHr.ex && d.liftHr.ex[e.id];
     if (xh) h += '<div class="hrline">❤️ avg <b>' + xh.avg + '</b> · peak <b>' + xh.max + '</b> bpm · ' + xh.mins + ' min' + (xh.sets && xh.sets.some(Boolean) ? '<br><span class="mute">Set peaks: ' + xh.sets.map(function (v, i) { return v ? (i + 1) + ") " + v : null; }).filter(Boolean).join(" · ") + '</span>' : '') + '</div>';
     else if (healthOn() && d.date === todayS() && sets.some(function (x) { return x.d && x.t; })) h += '<div class="hrline mute">❤️ Heart rate shows here once your watch syncs (tap Sync).</div>';
@@ -353,6 +355,8 @@ function renderProg() {
   var t = todayS(), wk = weekStart(t), bars = [];
   for (var i = 7; i >= 0; i--) { var ws = addDays(wk, -7 * i), sum = 0; for (var j = 0; j < 7; j++) { var d = get(addDays(ws, j)); if (d) sum += (+d.cardioMin || 0); } bars.push({ x: short(ws), y: sum }); }
   h += '<h2>Cardio minutes per week</h2><div class="card">' + barChart(bars, "#5fb3f0") + '</div>';
+  var cb = []; for (var ci = 13; ci >= 0; ci--) { var ck = addDays(t, -ci), cc = dayCalories(get(ck)); cb.push({ x: short(ck).split("/")[1], y: cc ? (cc.workout || 0) : 0 }); }
+  if (cb.some(function (p) { return p.y; })) h += '<h2>Workout calories, last 14 days</h2><div class="card">' + barChart(cb, "#f5b84b") + '<div class="mute small" style="margin-top:6px">Estimated lifting + cardio calories each day.</div></div>';
   var hk = keys.filter(function (k) { return S.days[k].health; });
   if (hk.length) {
     var rh = hk.filter(function (k) { return S.days[k].health.restingHr; }).map(function (k) { return { x: short(k), y: S.days[k].health.restingHr }; });
@@ -460,7 +464,7 @@ function renderMore() {
   else h += '<div class="row between"><span>✅ Connected</span><span class="small mute">' + ((st.healthGranted || []).length) + ' data types allowed</span></div><div class="small mute" style="margin:6px 0 10px">Each day syncs when you open it. Cardio and body weight fill in automatically if you haven\'t entered them.</div><div class="row wrap" style="gap:8px"><button class="btn sec sm" data-act="hback">Re-sync last 30 days</button><button class="btn sec sm" data-act="hperm">Permissions</button><button class="btn sec sm" data-act="hoff">Disconnect</button></div>';
   h += '</div>';
 
-  h += '<h2>Profile</h2><div class="card"><div class="row between" style="padding:4px 0"><span class="small">Name on reports</span><input class="field" id="pfName" value="' + esc(st.name || "") + '" style="width:60%"></div><div class="row between" style="padding:4px 0"><span class="small">Body weight goal (lb)</span><input class="field" type="number" id="bodyGoal" value="' + (st.bodyGoal || "") + '" placeholder="optional" style="width:110px;text-align:center"></div></div>';
+  h += '<h2>Profile</h2><div class="card"><div class="row between" style="padding:4px 0"><span class="small">Name on reports</span><input class="field" id="pfName" value="' + esc(st.name || "") + '" style="width:60%"></div><div class="row between" style="padding:4px 0"><span class="small">Age</span><input class="field" type="number" id="pfAge" value="' + (st.age || "") + '" placeholder="needed for calories" style="width:170px;text-align:center"></div><div class="row between" style="padding:4px 0"><span class="small">Sex</span><select class="field" id="pfSex" style="width:170px"><option value="M"' + (st.sex !== "F" ? " selected" : "") + '>Male</option><option value="F"' + (st.sex === "F" ? " selected" : "") + '>Female</option></select></div><div class="row between" style="padding:4px 0"><span class="small">Height (inches)</span><input class="field" type="number" id="pfHeight" value="' + (st.heightIn || "") + '" style="width:170px;text-align:center"></div><div class="row between" style="padding:4px 0"><span class="small">Starting weight (lb)</span><input class="field" type="number" id="pfWeight" value="' + (st.weightLb || "") + '" style="width:170px;text-align:center"></div><div class="row between" style="padding:4px 0"><span class="small">Body weight goal (lb)</span><input class="field" type="number" id="bodyGoal" value="' + (st.bodyGoal || "") + '" placeholder="optional" style="width:110px;text-align:center"></div></div>';
 
   h += '<h2>Backup</h2><div class="card"><div class="small mute" style="margin-bottom:10px">Your data lives on this phone. Export a backup now and then (to Google Drive or email) so a lost phone doesn\'t mean a lost log.</div><div class="row" style="gap:8px"><button class="btn sec" style="flex:1" data-act="export">Export backup</button><button class="btn sec" style="flex:1" data-act="import">Import backup</button></div><input type="file" id="importFile" accept="application/json,.json" class="hidden"></div>';
   h += '<div class="mute small" style="text-align:center;margin-top:16px">Training Log v' + APP_VERSION + '</div>';
@@ -618,6 +622,8 @@ function buildReport(from, to, includeLog) {
   heading("Cardio");
   font(10, "normal"); col(DK);
   doc.text(pdfText(cardio + " minutes over " + cardioN + " sessions" + (cardioN ? " (avg " + Math.round(cardio / cardioN) + " min)" : "")), M, y); y += 14;
+  var calDays = dates.map(function (x) { return dayCalories(get(x)); }).filter(Boolean), wkCal = calDays.reduce(function (a, c) { return a + (c.workout || 0); }, 0), totDays = calDays.filter(function (c) { return c.total; });
+  if (wkCal || totDays.length) { font(10, "normal"); col(DK); doc.text(pdfText("Calories burned (estimates): workouts ~" + wkCal.toLocaleString() + " kcal in total" + (totDays.length ? ", whole-day average ~" + Math.round(totDays.reduce(function (a, c) { return a + c.total; }, 0) / totDays.length).toLocaleString() + " kcal/day" : "")), M, y); y += 14; }
   var tk = Object.keys(types); if (tk.length) { table(["Type", "Minutes"], tk.sort(function (a, b) { return types[b] - types[a]; }).map(function (k) { return [k, String(types[k])]; }), [200, 100]); }
   if (bws.length) {
     heading("Body weight");
@@ -659,9 +665,10 @@ function buildReport(from, to, includeLog) {
         var e = exInfo(id), txt;
         if (e.bw || !dn.some(function (x) { return +x.w; })) { var tot = dn.reduce(function (a, x) { return a + (+x.r || 0); }, 0); txt = dn.length > 6 ? (tot + " reps in " + dn.length + " sets") : (dn.map(function (x) { return x.r; }).join(", ") + " reps (" + tot + " total)"); }
         else txt = dn.map(function (x) { return x.w + "×" + x.r; }).join(", ");
-        var xh2 = d.liftHr && d.liftHr.ex && d.liftHr.ex[id]; if (xh2) txt += "   (HR avg " + xh2.avg + ", peak " + xh2.max + ")";
+        var xh2 = d.liftHr && d.liftHr.ex && d.liftHr.ex[id]; if (xh2) txt += "   (HR avg " + xh2.avg + ", peak " + xh2.max + ")"; var xc2 = exCalories(d, e); if (xc2) txt += "   ~" + xc2.kcal + " kcal";
         lines.push(e.n + ": " + txt);
       });
+      var dc2 = dayCalories(d); if (dc2) lines.push("Calories: " + (dc2.total ? dc2.total.toLocaleString() + " total for the day, " : "") + "workout ~" + dc2.workout + " (lifting " + dc2.lift + ", cardio " + dc2.cardio + ")");
       if (d.bodyWeight) lines.push("Body weight: " + d.bodyWeight + " lb");
       if (d.health) { var hh = d.health, hp = []; if (hh.restingHr) hp.push("resting HR " + hh.restingHr); if (hh.hr) hp.push("HR avg " + hh.hr.avg + " / max " + hh.hr.max); if (hh.steps) hp.push(hh.steps.toLocaleString() + " steps"); if (hh.sleep) hp.push("sleep " + fmtMin(hh.sleep.min)); if (hh.spo2) hp.push("SpO2 " + hh.spo2 + "%"); if (hp.length) lines.push("Health: " + hp.join(", ")); if (d.liftHr && d.liftHr.avg) lines.push("Lifting session: " + Math.round((d.liftHr.end - d.liftHr.start) / 60000) + " min, HR avg " + d.liftHr.avg + " / max " + d.liftHr.max); (hh.workouts || []).forEach(function (w) { lines.push("Watch: " + w.name + " " + w.min + " min" + (w.avgHr ? ", avg " + w.avgHr + " / max " + w.maxHr + " bpm" : "") + (w.kcal ? ", " + w.kcal + " kcal" : "")); }); }
       font(9.5, "normal"); var wrapped = []; lines.forEach(function (l) { wrapped = wrapped.concat(doc.splitTextToSize(pdfText(l), CW - 14)); });
@@ -822,6 +829,67 @@ function healthCard(d) {
   return out + '<div class="small mute" style="margin-top:6px">Updated ' + fmtTime(new Date(h.syncedAt).toISOString()) + '</div></div>';
 }
 
+
+// ================= Calories =================
+var CARDIO_MET = { "Stationary bike": 5.5, "Walk": 3.5, "Treadmill": 7, "Elliptical": 5, "Rower": 7, "Stair climber": 9, "Hockey": 8, "Golf": 4.8, "Other": 6 };
+function weightLbOn(date) {
+  var keys = Object.keys(S.days).filter(function (k) { return k <= date; }).sort().reverse();
+  for (var i = 0; i < keys.length; i++) { var d = S.days[keys[i]]; if (d.bodyWeight) return +d.bodyWeight; if (d.health && d.health.weightLb) return d.health.weightLb; }
+  return S.settings.weightLb ? +S.settings.weightLb : null;
+}
+function bmr(date) {
+  var st = S.settings, lb = weightLbOn(date), age = +st.age, inch = +st.heightIn;
+  if (!lb || !age || !inch) return null;
+  return Math.round(10 * lb / 2.20462 + 6.25 * inch * 2.54 - 5 * age + (st.sex === "F" ? -161 : 5));
+}
+// kcal for one exercise on a day: heart-rate based when we have HR + age, else a MET estimate from time or sets
+function exCalories(d, e) {
+  var sets = ((d.ex || {})[e.id] || []).filter(function (x) { return x.d; }); if (!sets.length) return null;
+  var lb = weightLbOn(d.date); if (!lb) return null;
+  var kg = lb / 2.20462, age = +S.settings.age, xh = d.liftHr && d.liftHr.ex && d.liftHr.ex[e.id];
+  if (xh && xh.avg && age) {
+    var perMin = S.settings.sex === "F" ? (-20.4022 + 0.4472 * xh.avg - 0.1263 * kg + 0.074 * age) / 4.184 : (-55.0969 + 0.6309 * xh.avg + 0.1988 * kg + 0.2017 * age) / 4.184;
+    if (perMin > 0) return { kcal: Math.round(Math.min(perMin, 12) * xh.mins), how: "hr" };
+  }
+  var met = e.bw ? (/chin|pull-?up/i.test(e.n) ? 6 : 3.8) : (e.failure ? 6 : 5);
+  var mins = xh ? xh.mins : (e.total ? Math.min(12, sets.length * 0.6) : e.bw ? sets.length * 1.2 : sets.length * (e.failure ? 3 : 2.5));
+  mins = Math.min(mins, 20);
+  return { kcal: Math.round(met * 3.5 * kg / 200 * mins), how: "est" };
+}
+function dayCalories(d) {
+  if (!d) return null;
+  var out = { lift: 0, cardio: 0, liftHow: "est", cardioHow: "est" }, W = dayWorkout(d), any = false;
+  if (W) W.groups.forEach(function (g) { g.ex.forEach(function (e) { var c = exCalories(d, e); if (c) { out.lift += c.kcal; any = true; if (c.how === "hr") out.liftHow = "hr"; } }); });
+  var cm = +d.cardioMin || 0;
+  if (cm) {
+    var hw = d.health && d.health.workouts ? d.health.workouts.filter(function (w) { return WK_CARDIO[w.type] && w.kcal; }) : [];
+    if (hw.length) { out.cardio = hw.reduce(function (a, w) { return a + w.kcal; }, 0); out.cardioHow = "watch"; }
+    else { var lb = weightLbOn(d.date); if (lb) out.cardio = Math.round((CARDIO_MET[d.cardioType] || 6) * 3.5 * (lb / 2.20462) / 200 * cm); }
+    if (out.cardio) any = true;
+  }
+  out.workout = out.lift + out.cardio;
+  var h = d.health || {}, b = bmr(d.date);
+  if (h.totalCal) { out.total = h.totalCal; out.totalHow = "watch"; }
+  else if (b && h.activeCal) { out.total = b + h.activeCal; out.totalHow = "bmr+active"; }
+  else if (b) { out.total = Math.round(b * 1.2) + out.workout; out.totalHow = "est"; }
+  if (h.activeCal) out.active = h.activeCal;
+  out.bmr = b;
+  return any || out.total ? out : null;
+}
+function calCard(d) {
+  var c = dayCalories(d);
+  if (!c) return (!S.settings.age || !S.settings.heightIn) && ui.cur === todayS() ? '<div class="card small mute">🔥 Add your age and height under More → Profile to see calories burned.</div>' : "";
+  var h = '<div class="card"><div class="row between"><b>🔥 Calories burned</b>' + (c.total ? '<b style="font-size:20px;color:var(--warn)">' + c.total.toLocaleString() + '</b>' : '') + '</div>';
+  h += '<div class="htiles">';
+  if (c.workout) h += '<div class="kv"><b>' + c.workout.toLocaleString() + '</b><span>Workout</span></div>';
+  if (c.lift) h += '<div class="kv"><b>' + c.lift.toLocaleString() + '</b><span>Lifting' + (c.liftHow === "hr" ? " (HR)" : " (est.)") + '</span></div>';
+  if (c.cardio) h += '<div class="kv"><b>' + c.cardio + '</b><span>Cardio' + (c.cardioHow === "watch" ? " (watch)" : " (est.)") + '</span></div>';
+  if (c.active) h += '<div class="kv"><b>' + c.active.toLocaleString() + '</b><span>Active (watch)</span></div>';
+  if (c.bmr) h += '<div class="kv"><b>' + c.bmr.toLocaleString() + '</b><span>Resting (BMR)</span></div>';
+  h += '</div><div class="small mute" style="margin-top:6px">' + (c.totalHow === "watch" ? "Day total from Samsung Health." : c.totalHow === "bmr+active" ? "Day total = resting burn + watch active calories." : c.total ? "Day total estimated from your profile + today's workout." : "") + ' Exercise numbers are estimates' + (c.liftHow === "hr" ? ", based on your heart rate." : ". Tick sets live with your watch on for heart-rate-based numbers.") + '</div></div>';
+  return h;
+}
+
 // ================= Rest timer =================
 var T = { end: 0, total: 0, iv: null, bg: false };
 function startTimer(sec) {
@@ -930,6 +998,9 @@ view.addEventListener("input", function (ev) {
   if (t.id === "notes") { ensure(ui.cur).notes = t.value; save(); return; }
   if (t.id === "pfName") { S.settings.name = t.value; save(); return; }
   if (t.id === "bodyGoal") { S.settings.bodyGoal = t.value ? +t.value : null; save(); return; }
+  if (t.id === "pfAge") { S.settings.age = t.value ? +t.value : null; save(); return; }
+  if (t.id === "pfHeight") { S.settings.heightIn = t.value ? +t.value : null; save(); return; }
+  if (t.id === "pfWeight") { S.settings.weightLb = t.value ? +t.value : null; save(); return; }
   if (t.id === "restSec" || t.id === "restPowerSec") { S.settings[t.id] = Math.max(0, +t.value || 0); save(); return; }
 });
 view.addEventListener("change", function (ev) {
@@ -938,6 +1009,7 @@ view.addEventListener("change", function (ev) {
   if (t.id === "cardioMin") setTimeout(render, 0);
   if (t.id === "progEx") { ui.progEx = t.value; t.blur(); render(); }
   if (t.id === "restOn") { S.settings.restOn = t.checked; save(); }
+  if (t.id === "pfSex") { S.settings.sex = t.value; save(); }
   if (t.id === "remindOn") { var on = t.checked; (on ? ensureNotifPerm() : Promise.resolve(true)).then(function (ok) { if (on && !ok) { toast("Notifications are blocked. Allow them in Android settings."); t.checked = false; return; } S.settings.remindOn = on; save(); scheduleReminders(); if (on) toast("Reminders on at " + S.settings.remindTime); }); }
   if (t.id === "remindTime") { S.settings.remindTime = t.value || "05:00"; save(); scheduleReminders(); }
   if (t.id === "rFrom") ui.rFrom = t.value;
