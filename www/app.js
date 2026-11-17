@@ -3,7 +3,7 @@
 var TP = window.TL_PROGRAMS;
 var Cap = window.Capacitor, isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 var P = (Cap && Cap.Plugins) || {};
-var APP_VERSION = "1.1.0";
+var APP_VERSION = "1.2.0";
 
 // ================= Dates =================
 var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -236,6 +236,9 @@ function exerciseGroup(d, g) {
       else h += '<div class="last">Last (' + fmtShort(last.date) + '): ' + ls.map(function (s) { return (e.bw ? "" : (s.w || "–") + "×") + (s.r || "–"); }).join(" · ") + '</div>';
     }
     if (sug && !all) h += '<div class="hint">' + esc(sug.text) + '</div>';
+    var xh = d.liftHr && d.liftHr.ex && d.liftHr.ex[e.id];
+    if (xh) h += '<div class="hrline">❤️ avg <b>' + xh.avg + '</b> · peak <b>' + xh.max + '</b> bpm · ' + xh.mins + ' min' + (xh.sets && xh.sets.some(Boolean) ? '<br><span class="mute">Set peaks: ' + xh.sets.map(function (v, i) { return v ? (i + 1) + ") " + v : null; }).filter(Boolean).join(" · ") + '</span>' : '') + '</div>';
+    else if (healthOn() && d.date === todayS() && sets.some(function (x) { return x.d && x.t; })) h += '<div class="hrline mute">❤️ Heart rate shows here once your watch syncs (tap Sync).</div>';
     if (e.total) { var tt = sets.reduce(function (a, s) { return a + (s.d ? (+s.r || 0) : 0); }, 0); h += '<div class="row between small" style="margin-top:6px"><span class="mute">Total so far</span><b>' + tt + ' / ' + e.total + '</b></div><div class="progressbar"><i style="width:' + Math.min(100, tt / e.total * 100) + '%"></i></div>'; }
     h += '<div class="sets">';
     if (!e.bw) h += '<div class="set"><span></span><span class="lbl" style="text-align:center">lb</span><span></span><span class="lbl" style="text-align:center">reps</span><span></span></div>';
@@ -656,10 +659,11 @@ function buildReport(from, to, includeLog) {
         var e = exInfo(id), txt;
         if (e.bw || !dn.some(function (x) { return +x.w; })) { var tot = dn.reduce(function (a, x) { return a + (+x.r || 0); }, 0); txt = dn.length > 6 ? (tot + " reps in " + dn.length + " sets") : (dn.map(function (x) { return x.r; }).join(", ") + " reps (" + tot + " total)"); }
         else txt = dn.map(function (x) { return x.w + "×" + x.r; }).join(", ");
+        var xh2 = d.liftHr && d.liftHr.ex && d.liftHr.ex[id]; if (xh2) txt += "   (HR avg " + xh2.avg + ", peak " + xh2.max + ")";
         lines.push(e.n + ": " + txt);
       });
       if (d.bodyWeight) lines.push("Body weight: " + d.bodyWeight + " lb");
-      if (d.health) { var hh = d.health, hp = []; if (hh.restingHr) hp.push("resting HR " + hh.restingHr); if (hh.hr) hp.push("HR avg " + hh.hr.avg + " / max " + hh.hr.max); if (hh.steps) hp.push(hh.steps.toLocaleString() + " steps"); if (hh.sleep) hp.push("sleep " + fmtMin(hh.sleep.min)); if (hh.spo2) hp.push("SpO2 " + hh.spo2 + "%"); if (hp.length) lines.push("Health: " + hp.join(", ")); (hh.workouts || []).forEach(function (w) { lines.push("Watch: " + w.name + " " + w.min + " min" + (w.avgHr ? ", avg " + w.avgHr + " / max " + w.maxHr + " bpm" : "") + (w.kcal ? ", " + w.kcal + " kcal" : "")); }); }
+      if (d.health) { var hh = d.health, hp = []; if (hh.restingHr) hp.push("resting HR " + hh.restingHr); if (hh.hr) hp.push("HR avg " + hh.hr.avg + " / max " + hh.hr.max); if (hh.steps) hp.push(hh.steps.toLocaleString() + " steps"); if (hh.sleep) hp.push("sleep " + fmtMin(hh.sleep.min)); if (hh.spo2) hp.push("SpO2 " + hh.spo2 + "%"); if (hp.length) lines.push("Health: " + hp.join(", ")); if (d.liftHr && d.liftHr.avg) lines.push("Lifting session: " + Math.round((d.liftHr.end - d.liftHr.start) / 60000) + " min, HR avg " + d.liftHr.avg + " / max " + d.liftHr.max); (hh.workouts || []).forEach(function (w) { lines.push("Watch: " + w.name + " " + w.min + " min" + (w.avgHr ? ", avg " + w.avgHr + " / max " + w.maxHr + " bpm" : "") + (w.kcal ? ", " + w.kcal + " kcal" : "")); }); }
       font(9.5, "normal"); var wrapped = []; lines.forEach(function (l) { wrapped = wrapped.concat(doc.splitTextToSize(pdfText(l), CW - 14)); });
       var notes = d.notes ? doc.splitTextToSize(pdfText("Notes: " + d.notes), CW - 14) : [];
       need(22 + wrapped.length * 12 + notes.length * 12);
@@ -707,7 +711,8 @@ function syncHealth(date, force) {
     agg("steps"), agg("calories"), agg("totalCalories"), agg("distance"),
     rs("heartRate", null, null, 2000), rs("restingHeartRate"), rs("heartRateVariability"), rs("oxygenSaturation"), rs("respiratoryRate"),
     rs("weight"), rs("bodyFat"), rs("vo2Max"), rs("bloodPressure"), rs("sleep", sleepB[0], sleepB[1], 20),
-    q(function () { return H.queryWorkouts({ startDate: b[0], endDate: b[1], limit: 50, ascending: true }); })
+    q(function () { return H.queryWorkouts({ startDate: b[0], endDate: b[1], limit: 50, ascending: true }); }),
+    (function () { var tk = setTicks(get(date)); if (!tk.length) return Promise.resolve(null); return rs("heartRate", new Date(tk[0].t - 10 * 60e3).toISOString(), new Date(tk[tk.length - 1].t + 5 * 60e3).toISOString(), 5000); })()
   ]).then(function (r) {
     var o = { syncedAt: Date.now(), final: date < addDays(t, -1) }, v, x;
     if ((v = sum(r[0])) != null && v > 0) o.steps = Math.round(v);
@@ -736,6 +741,9 @@ function syncHealth(date, force) {
     }).filter(function (w) { return w.min > 0; });
     if (wk.length) o.workouts = wk;
     var d = ensure(date); d.health = o;
+    var lhr = list(r[15]).map(function (s) { return { t: new Date(s.startDate).getTime(), v: +s.value }; }).filter(function (s) { return s.v > 0; });
+    if (!lhr.length) lhr = hr;
+    var lh = liftHr(d, lhr); if (lh) d.liftHr = lh;
     // fill in what the day is missing
     if (o.weightLb && !d.bodyWeight) { d.bodyWeight = o.weightLb; d.bodyWeightSrc = "Samsung Health"; }
     var cw = wk.filter(function (w) { return WK_CARDIO[w.type]; });
@@ -745,6 +753,31 @@ function syncHealth(date, force) {
     delete hBusy[date]; save(); return true;
   }).catch(function (e) { delete hBusy[date]; return false; });
   return hBusy[date];
+}
+
+// ---- heart rate per exercise, from the times sets were ticked ----
+function setTicks(d) {
+  var tk = []; if (!d) return tk;
+  Object.keys(d.ex || {}).forEach(function (id) { d.ex[id].forEach(function (st, i) { if (st.d && st.t) tk.push({ id: id, i: i, t: st.t }); }); });
+  return tk.sort(function (a, b) { return a.t - b.t; });
+}
+function hrStats(arr) { if (!arr.length) return null; var v = arr.map(function (x) { return x.v; }); return { avg: Math.round(v.reduce(function (a, c) { return a + c; }, 0) / v.length), max: Math.max.apply(null, v), min: Math.min.apply(null, v), n: v.length }; }
+function liftHr(d, hr) {
+  var tk = setTicks(d); if (!tk.length || !hr.length) return null;
+  var lead = 4 * 60e3, tail = 30e3, ex = {};
+  tk.forEach(function (k, j) {
+    var from = j ? tk[j - 1].t : k.t - lead, win = hr.filter(function (h) { return h.t > from && h.t <= k.t + tail; });
+    var e = ex[k.id] || (ex[k.id] = { from: from, to: k.t + tail, sets: [] });
+    e.to = k.t + tail; e.sets[k.i] = win.length ? Math.max.apply(null, win.map(function (h) { return h.v; })) : null;
+  });
+  var out = { start: tk[0].t - lead, end: tk[tk.length - 1].t + 60e3, ex: {} };
+  Object.keys(ex).forEach(function (id) {
+    var e = ex[id], st = hrStats(hr.filter(function (h) { return h.t > e.from && h.t <= e.to; }));
+    if (st) out.ex[id] = { avg: st.avg, max: st.max, min: st.min, mins: Math.max(1, Math.round((e.to - e.from) / 60000)), sets: e.sets };
+  });
+  var all = hrStats(hr.filter(function (h) { return h.t >= out.start && h.t <= out.end; }));
+  if (all) { out.avg = all.avg; out.max = all.max; out.min = all.min; }
+  return Object.keys(out.ex).length ? out : null;
 }
 function connectHealth() {
   if (!isNative || !H) { toast("Samsung Health works in the installed Android app"); return; }
@@ -783,6 +816,7 @@ function healthCard(d) {
   if (h.bodyFat) tiles.push([h.bodyFat + "%", "Body fat"]);
   if (h.vo2max) tiles.push([h.vo2max, "VO2 max"]);
   out += '<div class="htiles">' + tiles.map(function (t) { return '<div class="kv"><b>' + esc(t[0]) + '</b><span>' + esc(t[1]) + '</span></div>'; }).join("") + '</div>';
+  if (d.liftHr && d.liftHr.avg) out += '<div class="lbl" style="margin:10px 0 4px">Lifting session</div><div class="small">' + fmtTime(new Date(d.liftHr.start).toISOString()) + '–' + fmtTime(new Date(d.liftHr.end).toISOString()) + ' · ' + Math.round((d.liftHr.end - d.liftHr.start) / 60000) + ' min · avg ' + d.liftHr.avg + ' / max ' + d.liftHr.max + ' bpm</div>';
   if (h.workouts) out += '<div class="lbl" style="margin:10px 0 4px">Workouts recorded</div>' + h.workouts.map(function (w) { return '<div class="small" style="padding:4px 0;border-bottom:1px solid var(--line)"><b>' + esc(w.name) + '</b> · ' + fmtTime(w.start) + ' · ' + w.min + ' min' + (w.avgHr ? ' · avg ' + w.avgHr + ' / max ' + w.maxHr + ' bpm' : '') + (w.kcal ? ' · ' + w.kcal + ' kcal' : '') + '</div>'; }).join("");
   if (d.cardioSrc && +d.cardioMin) out += '<div class="small" style="color:var(--acc);margin-top:6px">Cardio filled in from Samsung Health. Edit it above if it\'s wrong.</div>';
   return out + '<div class="small mute" style="margin-top:6px">Updated ' + fmtTime(new Date(h.syncedAt).toISOString()) + '</div></div>';
@@ -874,7 +908,7 @@ function onAct(b, ev) {
       if (!e.bw && !s.w) { var ph = row.querySelector('input[data-f="w"]'); if (ph && ph.placeholder && !isNaN(+ph.placeholder)) s.w = ph.placeholder; }
       if (!s.r) { var tr = e.reps[i] || e.reps[e.reps.length - 1]; if (tr) s.r = String(tr); }
       if (!s.r) { toast("Enter how many reps you did"); return; }
-      s.d = true; autoHabits(d); haptic();
+      s.d = true; if (ui.cur === todayS()) s.t = Date.now(); autoHabits(d); haptic();
       var rest = e.failure ? S.settings.restPowerSec : S.settings.restSec;
       if (exDone(e, sets)) rest = Math.max(rest, S.settings.restSec);
       startTimer(+rest);

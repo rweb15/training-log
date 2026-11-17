@@ -119,3 +119,5 @@ label.sw input{width:22px;height:22px;accent-color:var(--acc)}
 .htiles .kv{padding:8px}
 .htiles .kv b{font-size:16px}
 .htiles .kv span{font-size:11px}
+.hrline{font-size:12.5px;margin-top:4px;color:#ff9a8f}
+.hrline .mute{color:var(--mute)}
