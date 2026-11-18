@@ -3,7 +3,7 @@
 var TP = window.TL_PROGRAMS;
 var Cap = window.Capacitor, isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 var P = (Cap && Cap.Plugins) || {};
-var APP_VERSION = "1.3.0";
+var APP_VERSION = "1.4.0";
 
 // ================= Dates =================
 var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -247,14 +247,19 @@ function exerciseGroup(d, g) {
     sets.forEach(function (s, i) {
       var tr = e.reps[i] || e.reps[e.reps.length - 1] || "";
       var ph = sug && sug.w[i] ? sug.w[i] : (last && last.sets[i] && last.sets[i].w ? last.sets[i].w : "lb");
-      h += '<div class="set' + (e.bw ? " bw" : "") + '"><span class="n">' + (i + 1) + '</span>';
+      h += '<div class="set' + (e.bw ? " bw" : "") + '"><button class="n setn" data-act="setmenu" data-ex="' + e.id + '" data-i="' + i + '">' + (i + 1) + '</button>';
       if (!e.bw) h += '<input type="number" inputmode="decimal" data-ex="' + e.id + '" data-i="' + i + '" data-f="w" value="' + esc(s.w) + '" placeholder="' + esc(ph) + '"><span class="x">×</span>';
       h += '<input type="number" inputmode="numeric" data-ex="' + e.id + '" data-i="' + i + '" data-f="r" value="' + esc(s.r) + '" placeholder="' + (tr || "max") + '">';
       h += '<button class="chk' + (s.d ? " on" : "") + '" data-act="set" data-ex="' + e.id + '" data-i="' + i + '">✓</button></div>';
     });
-    h += '</div><button class="addset" data-act="addset" data-ex="' + e.id + '">+ Add set</button></div>';
+    h += '</div><div class="setbtns"><button class="addset" data-act="addset" data-ex="' + e.id + '">+ Add set</button>' + (sets.length > 1 ? '<button class="addset" data-act="rmset" data-ex="' + e.id + '">− Remove set</button>' : '') + '</div><div class="small mute" style="margin-top:4px">Tip: tap a set number to remove that set.</div></div>';
   });
   return h;
+}
+function setMenu(exId, i) {
+  var d = ensure(ui.cur), e = findInDay(d, exId), st = getSets(d, e)[i] || {};
+  var info = st.d ? (e.bw ? (st.r || "-") + " reps" : (st.w || "-") + " lb × " + (st.r || "-")) + ", ticked" : (st.w || st.r ? "partly filled in" : "empty");
+  openSheet('<h3>' + esc(e.n) + ' · set ' + (i + 1) + '</h3><div class="small mute" style="margin-bottom:14px">This set is ' + esc(info) + '.</div><button class="btn bad full" data-act="setdel" data-ex="' + e.id + '" data-i="' + i + '">Remove set ' + (i + 1) + '</button><button class="btn sec full" style="margin-top:8px" data-act="sclose">Cancel</button>');
 }
 function getSets(d, e) { d.ex = d.ex || {}; if (!d.ex[e.id]) d.ex[e.id] = setsFor(d, e).map(clone); return d.ex[e.id]; }
 function findInDay(d, id) { var W = dayWorkout(d); if (W) for (var i = 0; i < W.groups.length; i++) for (var j = 0; j < W.groups[i].ex.length; j++) if (W.groups[i].ex[j].id === id) return W.groups[i].ex[j]; return exInfo(id); }
@@ -442,12 +447,10 @@ function useProgram(id) {
 // ================= More / settings / report =================
 function renderMore() {
   var st = S.settings, h = '';
-  h += '<h2>PDF report</h2><div class="card"><div class="small mute" style="margin-bottom:8px">Summary, success calendar, lift progress, records, cardio, body weight and a session-by-session log.</div><div class="chips" style="margin-bottom:10px">';
-  [["7", "Last 7 days"], ["30", "Last 30 days"], ["month", "This month"], ["90", "Last 90 days"], ["all", "All time"], ["custom", "Custom"]].forEach(function (r) { h += '<button class="chip' + (ui.reportRange === r[0] ? " on" : "") + '" data-act="rrange" data-v="' + r[0] + '">' + r[1] + '</button>'; });
-  h += '</div>';
-  if (ui.reportRange === "custom") h += '<div class="grid2" style="margin-bottom:10px"><input type="date" class="field" id="rFrom" value="' + (ui.rFrom || addDays(todayS(), -30)) + '"><input type="date" class="field" id="rTo" value="' + (ui.rTo || todayS()) + '"></div>';
-  h += '<label class="sw"><span class="small">Include session-by-session log</span><input type="checkbox" id="rLog"' + (ui.rLog === false ? "" : " checked") + '></label>';
-  h += '<button class="btn full" data-act="report">Create PDF report</button></div>';
+  var ro = repOpts(), rr = repRange(ro);
+  h += '<h2>PDF report</h2><div class="card"><div class="small mute" style="margin-bottom:10px">Pick the dates, workouts, exercises and sections you want. The PDF saves to your phone\'s <b>Downloads/TrainingLog</b> folder and you can open or send it straight away.</div>';
+  h += '<div class="small" style="margin-bottom:10px">Last used: <b>' + esc(ro.title || "Training Report") + '</b> · ' + fmtShort(rr[0]) + ' → ' + fmtShort(rr[1]) + '</div>';
+  h += '<button class="btn full" data-act="openreport">Build a PDF report</button></div>';
 
   h += '<h2>Rest timer</h2><div class="card"><label class="sw"><span>Start a rest timer when I tick a set</span><input type="checkbox" id="restOn"' + (st.restOn ? " checked" : "") + '></label>';
   h += '<div class="row between" style="padding:6px 0"><span class="small">Normal sets (seconds)</span><input class="field" type="number" id="restSec" value="' + st.restSec + '" style="width:90px;text-align:center"></div>';
@@ -506,19 +509,176 @@ function shareFile(name, b64OrText, mime, isText) {
 }
 
 // ================= PDF report =================
-function reportRange() {
-  var t = todayS(), r = ui.reportRange, keys = Object.keys(S.days).sort();
-  if (r === "7") return [addDays(t, -6), t];
-  if (r === "30") return [addDays(t, -29), t];
-  if (r === "90") return [addDays(t, -89), t];
-  if (r === "month") return [t.slice(0, 8) + "01", t];
-  if (r === "all") return [keys[0] || t, t];
-  var f = (document.getElementById("rFrom") || {}).value || ui.rFrom || addDays(t, -30), to = (document.getElementById("rTo") || {}).value || ui.rTo || t;
+var REPORT_SECTIONS = [
+  ["summary", "Summary tiles", "Workouts done, success rate, streak, cardio, body weight"],
+  ["calendar", "Success calendar", "Colour-coded days for the range"],
+  ["lifts", "Lift progress table", "First vs last top set, change, best set, volume"],
+  ["charts", "Lift progress charts", "A small chart of top weight for each lift"],
+  ["prs", "Personal records", "Best set and estimated 1-rep max per lift"],
+  ["cardio", "Cardio", "Minutes by type"],
+  ["calories", "Calories burned", "Workout and whole-day estimates"],
+  ["bodyweight", "Body weight", "Start, latest and a trend chart"],
+  ["health", "Samsung Health stats", "Heart rate, steps, sleep, blood oxygen, watch workouts"],
+  ["log", "Session-by-session log", "Every set of every day"],
+  ["hr", "Heart rate & calories per exercise", "Shown in the session log"],
+  ["notes", "Your notes", "Shown in the session log"]
+];
+var REPORT_PRESETS = {
+  full: { label: "Full report", on: ["summary", "calendar", "lifts", "charts", "prs", "cardio", "calories", "bodyweight", "health", "log", "hr", "notes"] },
+  summary: { label: "1-page summary", on: ["summary", "calendar", "lifts", "cardio", "bodyweight"] },
+  lifts: { label: "Lifts only", on: ["lifts", "charts", "prs", "log", "hr"] },
+  health: { label: "Health & cardio", on: ["summary", "cardio", "calories", "bodyweight", "health"] }
+};
+var RANGES = [["7", "Last 7 days"], ["30", "Last 30 days"], ["thisweek", "This week"], ["month", "This month"], ["lastmonth", "Last month"], ["90", "Last 90 days"], ["all", "All time"], ["custom", "Custom dates"]];
+
+function repOpts() {
+  var r = S.settings.report;
+  if (!r) {
+    r = S.settings.report = { range: "30", from: addDays(todayS(), -29), to: todayS(), title: "Training Report", preset: "full", sections: {}, exExclude: [], wkExclude: [], cardioExclude: [] };
+    REPORT_PRESETS.full.on.forEach(function (k) { r.sections[k] = true; });
+  }
+  return r;
+}
+function repRange(r) {
+  var t = todayS(), keys = Object.keys(S.days).sort(), d = pd(t);
+  switch (r.range) {
+    case "7": return [addDays(t, -6), t];
+    case "30": return [addDays(t, -29), t];
+    case "90": return [addDays(t, -89), t];
+    case "thisweek": return [weekStart(t), t];
+    case "month": return [t.slice(0, 8) + "01", t];
+    case "lastmonth": var a = new Date(d.getFullYear(), d.getMonth() - 1, 1), b = new Date(d.getFullYear(), d.getMonth(), 0); return [ds(a), ds(b)];
+    case "all": return [startDate() < (keys[0] || t) ? startDate() : (keys[0] || t), t];
+  }
+  var f = r.from || addDays(t, -29), to = r.to || t;
   return f <= to ? [f, to] : [to, f];
 }
+function datesIn(from, to) { var out = []; for (var s = from; s <= to; s = addDays(s, 1)) out.push(s); return out; }
+function dayWk(s) { var d = get(s); return d ? d.workout : scheduledWorkout(s); }
+function wkLabel(w) { return w === "rest" ? "Rest days" : (/^\d+$/.test(w) ? "Workout #" + w : w); }
+// what exists in a range, for the filter lists
+function rangeInventory(from, to, r) {
+  var wks = {}, exs = {}, cts = {};
+  datesIn(from, to).forEach(function (s) {
+    var d = get(s), w = dayWk(s);
+    if (d && (score(d) || Object.keys(d.ex || {}).length)) wks[w] = (wks[w] || 0) + 1;
+    if (!d) return;
+    if (r && r.wkExclude.indexOf(w) >= 0) return;
+    Object.keys(d.ex || {}).forEach(function (id) { if (d.ex[id].some(function (x) { return x.d; })) exs[id] = (exs[id] || 0) + 1; });
+    if (+d.cardioMin > 0) cts[d.cardioType] = (cts[d.cardioType] || 0) + 1;
+  });
+  return { wks: wks, exs: exs, cts: cts };
+}
+
+function openReportBuilder() { renderReportSheet(); document.getElementById("sheet").classList.remove("hidden"); document.getElementById("sheetIn").scrollTop = 0; }
+function renderReportSheet() {
+  var r = repOpts(), rg = repRange(r), inv = rangeInventory(rg[0], rg[1], r), box = document.getElementById("sheetIn"), keep = box.scrollTop;
+  var h = '<div class="row between"><h3>PDF report</h3><button class="btn sec sm" data-act="sclose">Close</button></div>';
+  h += '<div class="lbl" style="margin:6px 0">Start from</div><div class="chips">';
+  Object.keys(REPORT_PRESETS).forEach(function (k) { h += '<button class="chip' + (r.preset === k ? " on" : "") + '" data-act="rpreset" data-v="' + k + '">' + REPORT_PRESETS[k].label + '</button>'; });
+  h += '</div>';
+  h += '<div class="lbl" style="margin:14px 0 6px">Date range</div><div class="chips">';
+  RANGES.forEach(function (x) { h += '<button class="chip' + (r.range === x[0] ? " on" : "") + '" data-act="rrange2" data-v="' + x[0] + '">' + x[1] + '</button>'; });
+  h += '</div>';
+  if (r.range === "custom") h += '<div class="grid2" style="margin-top:8px"><div><div class="lbl">From</div><input type="date" class="field" id="rpFrom" value="' + rg[0] + '"></div><div><div class="lbl">To</div><input type="date" class="field" id="rpTo" value="' + rg[1] + '"></div></div>';
+  h += '<div class="small mute" style="margin-top:6px">' + fmtLong(rg[0]) + ', ' + pd(rg[0]).getFullYear() + ' → ' + fmtLong(rg[1]) + ', ' + pd(rg[1]).getFullYear() + ' (' + (daysBetween(rg[0], rg[1]) + 1) + ' days)</div>';
+
+  h += '<div class="lbl" style="margin:14px 0 6px">Title</div><input class="field" id="rpTitle" value="' + esc(r.title || "Training Report") + '">';
+
+  h += '<div class="lbl" style="margin:14px 0 2px">What to include</div>';
+  REPORT_SECTIONS.forEach(function (sx) { h += '<label class="sw"><span><span class="small"><b>' + sx[1] + '</b></span><br><span class="small mute">' + sx[2] + '</span></span><input type="checkbox" data-rsec="' + sx[0] + '"' + (r.sections[sx[0]] ? " checked" : "") + '></label>'; });
+
+  var wk = Object.keys(inv.wks).sort();
+  if (wk.length) {
+    h += '<div class="lbl" style="margin:14px 0 6px">Workouts</div><div class="chips">';
+    wk.forEach(function (w) { h += '<button class="chip' + (r.wkExclude.indexOf(w) < 0 ? " on" : "") + '" data-act="rwk" data-v="' + esc(w) + '">' + esc(wkLabel(w)) + ' <span class="mute">· ' + inv.wks[w] + (inv.wks[w] === 1 ? " day" : " days") + '</span></button>'; });
+    h += '</div>';
+  }
+  var exIds = Object.keys(inv.exs).sort(function (a, b) { return exInfo(a).n < exInfo(b).n ? -1 : 1; });
+  h += '<div class="row between" style="margin:14px 0 4px"><span class="lbl">Exercises</span><span class="row" style="gap:6px"><button class="btn sec sm" data-act="rexall">All</button><button class="btn sec sm" data-act="rexnone">None</button></span></div>';
+  if (!exIds.length) h += '<div class="small mute">No exercises logged in this range.</div>';
+  exIds.forEach(function (id) { h += '<label class="sw"><span class="small">' + esc(exInfo(id).n) + ' <span class="mute">· ' + inv.exs[id] + (inv.exs[id] === 1 ? " session" : " sessions") + '</span></span><input type="checkbox" data-rex="' + id + '"' + (r.exExclude.indexOf(id) < 0 ? " checked" : "") + '></label>'; });
+  var ct = Object.keys(inv.cts).sort();
+  if (ct.length) {
+    h += '<div class="lbl" style="margin:14px 0 6px">Cardio types</div><div class="chips">';
+    ct.forEach(function (c) { h += '<button class="chip' + (r.cardioExclude.indexOf(c) < 0 ? " on" : "") + '" data-act="rct" data-v="' + esc(c) + '">' + esc(c) + '</button>'; });
+    h += '</div>';
+  }
+  var nEx = exIds.filter(function (id) { return r.exExclude.indexOf(id) < 0; }).length, nSec = REPORT_SECTIONS.filter(function (sx) { return r.sections[sx[0]]; }).length;
+  h += '<div class="card" style="margin:16px 0 10px;background:var(--card2)"><div class="small">' + nSec + ' sections · ' + nEx + ' of ' + exIds.length + ' exercises' + (r.wkExclude.length ? ' · some workouts hidden' : '') + '</div></div>';
+  h += '<button class="btn full" data-act="rmake" ' + (nSec ? "" : "disabled") + '>Create PDF & save to Downloads</button>';
+  box.innerHTML = h; box.scrollTop = keep;
+}
+function reportSheetAct(act, b) {
+  var r = repOpts(), v = b.getAttribute("data-v");
+  if (act === "rpreset") { r.preset = v; r.sections = {}; REPORT_PRESETS[v].on.forEach(function (k) { r.sections[k] = true; }); if (v === "summary" && (r.range === "all" || r.range === "90")) r.range = "30"; }
+  else if (act === "rrange2") { r.range = v; if (v === "custom") { var rg = repRange({ range: "30" }); r.from = r.from || rg[0]; r.to = r.to || rg[1]; } }
+  else if (act === "rwk") { var i = r.wkExclude.indexOf(v); if (i >= 0) r.wkExclude.splice(i, 1); else r.wkExclude.push(v); }
+  else if (act === "rct") { var j = r.cardioExclude.indexOf(v); if (j >= 0) r.cardioExclude.splice(j, 1); else r.cardioExclude.push(v); }
+  else if (act === "rexall") r.exExclude = [];
+  else if (act === "rexnone") { var rg2 = repRange(r); r.exExclude = Object.keys(rangeInventory(rg2[0], rg2[1], r).exs); }
+  else if (act === "rmake") return makeReport2(b);
+  save(); renderReportSheet();
+}
+document.getElementById("sheetIn").addEventListener("change", function (ev) {
+  var t = ev.target, r = S && S.settings.report; if (!r) return;
+  if (t.hasAttribute("data-rsec")) { r.sections[t.getAttribute("data-rsec")] = t.checked; r.preset = ""; save(); renderReportSheet(); }
+  else if (t.hasAttribute("data-rex")) { var id = t.getAttribute("data-rex"), i = r.exExclude.indexOf(id); if (t.checked && i >= 0) r.exExclude.splice(i, 1); if (!t.checked && i < 0) r.exExclude.push(id); save(); renderReportSheet(); }
+  else if (t.id === "rpFrom") { r.from = t.value; save(); renderReportSheet(); }
+  else if (t.id === "rpTo") { r.to = t.value; save(); renderReportSheet(); }
+});
+document.getElementById("sheetIn").addEventListener("input", function (ev) { var r = S && S.settings.report; if (r && ev.target.id === "rpTitle") { r.title = ev.target.value; save(); } });
+
+function makeReport2(btn) {
+  var r = repOpts(), rg = repRange(r);
+  btn.disabled = true; btn.textContent = "Building report…";
+  setTimeout(function () {
+    var doc, name;
+    try {
+      doc = buildReport({ from: rg[0], to: rg[1], title: r.title || "Training Report", sec: r.sections, exExclude: r.exExclude, wkExclude: r.wkExclude, cardioExclude: r.cardioExclude });
+      name = (r.title || "Training Report").replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, "-") + "_" + rg[0] + "_to_" + rg[1] + ".pdf";
+    } catch (e) { btn.disabled = false; btn.textContent = "Create PDF & save to Downloads"; toast("Report failed: " + e.message); console.error(e); return; }
+    var b64 = doc.output("datauristring").split(",")[1], pages = doc.getNumberOfPages();
+    savePdf(name, b64).then(function (res) { showSaved(name, b64, res, pages); }).catch(function (e) {
+      showSaved(name, b64, null, pages, e && e.message);
+    });
+  }, 30);
+}
+// Save to the phone's Downloads/TrainingLog folder (native) or download (browser)
+function savePdf(name, b64) {
+  if (isNative && P.SaveFile) return P.SaveFile.saveToDownloads({ filename: name, data: b64, mimeType: "application/pdf" });
+  if (isNative) return Promise.reject(new Error("Saving isn't available on this phone"));
+  var blob = new Blob([Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); })], { type: "application/pdf" });
+  var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  return Promise.resolve({ path: "your Downloads folder", uri: null, browser: true });
+}
+var lastPdf = null;
+function showSaved(name, b64, res, pages, err) {
+  lastPdf = { name: name, b64: b64, uri: res && res.uri };
+  var h = '<h3>' + (res ? "✅ Report saved" : "Report ready") + '</h3>';
+  h += '<div class="small" style="margin-bottom:6px"><b>' + esc(name) + '</b> · ' + pages + (pages === 1 ? " page" : " pages") + '</div>';
+  if (res) h += '<div class="small mute" style="margin-bottom:14px">Saved to <b>' + esc(res.path) + '</b>. You\'ll also find it in the <b>My Files</b> app under Downloads.</div>';
+  else h += '<div class="small err" style="margin-bottom:14px">Couldn\'t save to Downloads' + (err ? " (" + esc(err) + ")" : "") + '. Use Share to save it to Drive, email it, or save it to your files.</div>';
+  if (res && res.uri) h += '<button class="btn full" data-act="ropen">Open PDF</button>';
+  h += '<button class="btn ' + (res && res.uri ? "sec " : "") + 'full" style="margin-top:8px" data-act="rshare">Share / email / save to Drive</button>';
+  h += '<button class="btn sec full" style="margin-top:8px" data-act="rback">Back to report options</button>';
+  openSheet(h);
+}
+function sharePdf() {
+  if (!lastPdf) return;
+  if (isNative && P.Filesystem && P.Share) return P.Filesystem.writeFile({ path: lastPdf.name, data: lastPdf.b64, directory: "CACHE" }).then(function (w) { return P.Share.share({ title: lastPdf.name, files: [w.uri], dialogTitle: "Send " + lastPdf.name }); }).catch(function (e) { if (!/cancel/i.test(String(e && e.message))) toast("Couldn't share: " + (e && e.message || e)); });
+  savePdf(lastPdf.name, lastPdf.b64);
+}
+
 function pdfText(s) { return String(s == null ? "" : s).replace(/[✓✔]/g, "Y").replace(/→/g, "->").replace(/[−–]/g, "-").replace(/[^\x00-\xFF—·×…’‘“”•]/g, ""); }
 
-function buildReport(from, to, includeLog) {
+function buildReport(o) {
+  if (typeof o === "string") o = { from: arguments[0], to: arguments[1], sec: null }; // old signature (tests)
+  var sec = o.sec || {}; if (!o.sec) REPORT_PRESETS.full.on.forEach(function (k) { sec[k] = true; });
+  var exX = o.exExclude || [], wkX = o.wkExclude || [], ctX = o.cardioExclude || [];
+  function exOk(id) { return exX.indexOf(id) < 0; }
+  function ctOk(c) { return ctX.indexOf(c) < 0; }
+  var from = o.from, to = o.to;
   var jsPDF = window.jspdf.jsPDF, doc = new jsPDF({ unit: "pt", format: "letter" });
   var PW = 612, M = 40, y = 0, CW = PW - 2 * M;
   var G = [61, 220, 132], DK = [20, 30, 26], MU = [110, 120, 128], LN = [220, 225, 228];
@@ -527,6 +687,7 @@ function buildReport(from, to, includeLog) {
   function font(sz, st) { doc.setFont("helvetica", st || "normal"); doc.setFontSize(sz); }
   function need(h) { if (y + h > 752) { doc.addPage(); y = 50; } }
   function heading(t) { need(70); y += 14; font(13, "bold"); col(DK); doc.text(pdfText(t), M, y); y += 6; doc.setDrawColor(G[0], G[1], G[2]); doc.setLineWidth(1.5); doc.line(M, y, M + 40, y); y += 14; }
+  function para(t, sz, c) { font(sz || 10, "normal"); col(c || DK); doc.splitTextToSize(pdfText(t), CW).forEach(function (l) { need(14); doc.text(l, M, y); y += 13; }); }
   function table(cols, rows, widths) {
     var x0 = M, rh = 16;
     function head() { need(rh + 4); font(8.5, "bold"); col(MU); var x = x0; cols.forEach(function (c, i) { doc.text(pdfText(c).toUpperCase(), x + 2, y); x += widths[i]; }); y += 5; doc.setDrawColor(LN[0], LN[1], LN[2]); doc.setLineWidth(0.6); doc.line(M, y, M + CW, y); y += 11; }
@@ -539,140 +700,199 @@ function buildReport(from, to, includeLog) {
     });
     y += 4;
   }
+  function miniChart(x, yy, w, h, title, pts, color, unit) {
+    fill([248, 250, 249]); doc.roundedRect(x, yy, w, h, 5, 5, "F");
+    font(9, "bold"); col(DK); doc.text(pdfText(title), x + 8, yy + 14);
+    var ch = pts.length > 1 ? (pts[pts.length - 1].y - pts[0].y) : 0;
+    font(8.5, "bold"); doc.setTextColor(20, 120, 70); doc.text(pdfText((ch > 0 ? "+" : "") + ch + " " + unit), x + w - 8, yy + 14, { align: "right" });
+    var px = x + 30, py = yy + 24, pw = w - 40, ph = h - 44, ys = pts.map(function (p) { return p.y; }), mn = Math.min.apply(null, ys), mx = Math.max.apply(null, ys);
+    if (mn === mx) { mn -= 5; mx += 5; }
+    font(7); col(MU); doc.text(String(mx), px - 4, py + 4, { align: "right" }); doc.text(String(mn), px - 4, py + ph, { align: "right" });
+    doc.setDrawColor(LN[0], LN[1], LN[2]); doc.setLineWidth(0.4); doc.line(px, py, px + pw, py); doc.line(px, py + ph, px + pw, py + ph);
+    var X = function (i) { return pts.length === 1 ? px + pw / 2 : px + pw * i / (pts.length - 1); }, Y = function (v) { return py + ph * (1 - (v - mn) / (mx - mn)); };
+    doc.setDrawColor(color[0], color[1], color[2]); doc.setLineWidth(1.6);
+    for (var i = 1; i < pts.length; i++) doc.line(X(i - 1), Y(pts[i - 1].y), X(i), Y(pts[i].y));
+    fill(color); pts.forEach(function (p, i) { doc.circle(X(i), Y(p.y), 1.8, "F"); });
+    font(7); col(MU); doc.text(pdfText(pts[0].x), px, yy + h - 7); if (pts.length > 1) doc.text(pdfText(pts[pts.length - 1].x), px + pw, yy + h - 7, { align: "right" });
+  }
 
-  // range data
-  var dates = []; for (var s = from; s <= to; s = addDays(s, 1)) dates.push(s);
-  var t = todayS(), sched = 0, done = 0, cardio = 0, cardioN = 0, perfect = 0, absN = 0, types = {}, bws = [];
+  // which days are in the report
+  var all = datesIn(from, to), t = todayS();
+  var dates = all.filter(function (s) { return wkX.indexOf(dayWk(s)) < 0; });
+  var sched = 0, done = 0, cardio = 0, cardioN = 0, perfect = 0, absN = 0, types = {}, bws = [];
   dates.forEach(function (s) {
     var d = get(s), rest = isRestDay(s);
     if (!rest && s <= t && tracked(s)) sched++;
-    if (d) { if (d.liftDone) done++; if (+d.cardioMin > 0) { cardio += +d.cardioMin; cardioN++; types[d.cardioType] = (types[d.cardioType] || 0) + (+d.cardioMin); } if (score(d) === 3) perfect++; if (d.absDone) absN++; if (d.bodyWeight) bws.push({ d: s, w: +d.bodyWeight }); }
+    if (d) {
+      if (d.liftDone) done++;
+      if (+d.cardioMin > 0 && ctOk(d.cardioType)) { cardio += +d.cardioMin; cardioN++; types[d.cardioType] = (types[d.cardioType] || 0) + (+d.cardioMin); }
+      if (score(d) === 3) perfect++; if (d.absDone) absN++;
+      var bw = d.bodyWeight || (d.health && d.health.weightLb); if (bw) bws.push({ d: s, w: +bw });
+    }
   });
   var progs = {}; dates.forEach(function (s) { var d = get(s); progs[d ? d.programId : programOnDate(s)] = 1; });
   var progNames = Object.keys(progs).filter(function (id) { return S.programs[id]; }).map(function (id) { return S.programs[id].name; }).join(", ");
+  var exIds = {}; dates.forEach(function (s) { var d = get(s); if (d) Object.keys(d.ex || {}).forEach(function (id) { if (exOk(id) && d.ex[id].some(function (x) { return x.d; })) exIds[id] = 1; }); });
+  var exList = Object.keys(exIds).sort(function (a, b) { return exInfo(a).n < exInfo(b).n ? -1 : 1; });
+  function sessOf(id) { return dates.filter(function (s) { var d = get(s); return d && d.ex && d.ex[id] && d.ex[id].some(function (x) { return x.d; }); }); }
 
   // header band
-  fill([15, 18, 20]); doc.rect(0, 0, PW, 92, "F");
-  fill(G); doc.rect(0, 92, PW, 4, "F");
-  font(22, "bold"); doc.setTextColor(255, 255, 255); doc.text("Training Report", M, 42);
+  fill([15, 18, 20]); doc.rect(0, 0, PW, 96, "F");
+  fill(G); doc.rect(0, 96, PW, 4, "F");
+  font(22, "bold"); doc.setTextColor(255, 255, 255); doc.text(pdfText(o.title || "Training Report"), M, 40);
   font(11, "normal"); doc.setTextColor(190, 200, 205);
-  doc.text(pdfText((S.settings.name ? S.settings.name + "  ·  " : "") + fmtLong(from) + ", " + pd(from).getFullYear() + "  to  " + fmtLong(to) + ", " + pd(to).getFullYear()), M, 62);
-  doc.text(pdfText("Program: " + progNames), M, 78);
-  font(9, "normal"); doc.text(pdfText("Generated " + fmtShort(t) + ", " + pd(t).getFullYear()), PW - M, 42, { align: "right" });
-  y = 120;
+  doc.text(pdfText((S.settings.name ? S.settings.name + "  ·  " : "") + fmtLong(from) + ", " + pd(from).getFullYear() + "  to  " + fmtLong(to) + ", " + pd(to).getFullYear()), M, 60);
+  doc.text(pdfText("Program: " + (progNames || "-")), M, 75);
+  var filt = []; if (wkX.length) filt.push("workouts: " + Object.keys(dates.reduce(function (a, s) { a[wkLabel(dayWk(s))] = 1; return a; }, {})).join(", "));
+  if (exX.length) filt.push(exList.length + " selected exercises"); if (ctX.length) filt.push("some cardio types hidden");
+  if (filt.length) { font(9); doc.text(pdfText("Filtered - " + filt.join("; ")), M, 89); }
+  font(9, "normal"); doc.setTextColor(190, 200, 205); doc.text(pdfText("Generated " + fmtShort(t) + ", " + pd(t).getFullYear()), PW - M, 40, { align: "right" });
+  y = 124;
 
-  // summary tiles
-  var rate = sched ? Math.round(done / sched * 100) : 0;
-  var bwTxt = bws.length > 1 ? ((bws[bws.length - 1].w - bws[0].w > 0 ? "+" : "") + (bws[bws.length - 1].w - bws[0].w).toFixed(1) + " lb") : (bws.length ? bws[0].w + " lb" : "-");
-  var tiles = [[done + " / " + sched, "Workouts done"], [rate + "%", "Success rate"], [String(streak()), "Current streak"], [String(cardio), "Cardio minutes"], [String(perfect), "Perfect days (all 3)"], [bwTxt, bws.length > 1 ? "Body weight change" : "Body weight"]];
-  var tw = (CW - 2 * 10) / 3, th = 54;
-  tiles.forEach(function (tl, i) {
-    var x = M + (i % 3) * (tw + 10), yy = y + Math.floor(i / 3) * (th + 10);
-    fill([244, 247, 245]); doc.roundedRect(x, yy, tw, th, 6, 6, "F");
-    font(18, "bold"); col([20, 120, 70]); doc.text(pdfText(tl[0]), x + 12, yy + 26);
-    font(9, "normal"); col(MU); doc.text(pdfText(tl[1]), x + 12, yy + 42);
-  });
-  y += 2 * th + 10 + 20;
-
-  // success calendar (week rows)
-  heading("Success calendar");
-  var start = weekStart(from), cell = 22, gap = 4, gx = M + 46;
-  font(8, "bold"); col(MU); ["M", "T", "W", "T", "F", "S", "S"].forEach(function (l, i) { doc.text(l, gx + i * (cell + gap) + cell / 2, y, { align: "center" }); });
-  y += 8;
-  for (var w = start; w <= to; w = addDays(w, 7)) {
-    need(cell + gap);
-    font(8, "normal"); col(MU); doc.text(pdfText(fmtShort(w)), M, y + 14);
-    for (var i = 0; i < 7; i++) {
-      var dd = addDays(w, i), x = gx + i * (cell + gap);
-      if (dd < from || dd > to) continue;
-      var d = get(dd), sc = score(d), rest = isRestDay(dd);
-      var c = sc === 3 ? G : sc === 2 ? [46, 150, 92] : sc === 1 ? [170, 220, 190] : rest ? [236, 238, 240] : (dd < t && tracked(dd)) ? [245, 196, 190] : [248, 249, 250];
-      fill(c); doc.roundedRect(x, y, cell, cell, 3, 3, "F");
-      font(7.5, "bold"); doc.setTextColor(sc >= 2 ? 255 : 60, sc >= 2 ? 255 : 70, sc >= 2 ? 255 : 76); doc.text(String(pd(dd).getDate()), x + cell / 2, y + 14, { align: "center" });
-    }
-    y += cell + gap;
+  if (sec.summary) {
+    var rate = sched ? Math.round(done / sched * 100) : 0;
+    var bwTxt = bws.length > 1 ? ((bws[bws.length - 1].w - bws[0].w > 0 ? "+" : "") + (bws[bws.length - 1].w - bws[0].w).toFixed(1) + " lb") : (bws.length ? bws[0].w + " lb" : "-");
+    var tiles = [[done + " / " + sched, "Workouts done"], [rate + "%", "Success rate"], [String(streak()), "Current streak"], [String(cardio), "Cardio minutes"], [String(perfect), "Perfect days (all 3)"], [bwTxt, bws.length > 1 ? "Body weight change" : "Body weight"]];
+    var tw = (CW - 2 * 10) / 3, th = 54;
+    tiles.forEach(function (tl, i) {
+      var x = M + (i % 3) * (tw + 10), yy = y + Math.floor(i / 3) * (th + 10);
+      fill([244, 247, 245]); doc.roundedRect(x, yy, tw, th, 6, 6, "F");
+      font(18, "bold"); col([20, 120, 70]); doc.text(pdfText(tl[0]), x + 12, yy + 26);
+      font(9, "normal"); col(MU); doc.text(pdfText(tl[1]), x + 12, yy + 42);
+    });
+    y += 2 * th + 10 + 16;
   }
-  y += 4; font(8, "normal"); col(MU);
-  var lx = M; [[G, "All 3 habits"], [[46, 150, 92], "2 of 3"], [[170, 220, 190], "1 of 3"], [[245, 196, 190], "Missed"], [[236, 238, 240], "Rest"]].forEach(function (l) { fill(l[0]); doc.rect(lx, y - 7, 9, 9, "F"); doc.text(l[1], lx + 13, y); lx += 22 + doc.getTextWidth(l[1]) + 10; });
-  y += 14;
-  font(9, "normal"); col(DK); doc.text(pdfText("Habits hit: Lift " + done + "  ·  Cardio " + cardioN + "  ·  Abs " + absN + " days"), M, y); y += 8;
 
-  // lift progress
-  var exIds = {}; dates.forEach(function (s) { var d = get(s); if (d) Object.keys(d.ex || {}).forEach(function (id) { if (d.ex[id].some(function (x) { return x.d; })) exIds[id] = 1; }); });
-  var liftRows = [], bwRows = [];
-  Object.keys(exIds).forEach(function (id) {
-    var e = exInfo(id), sess = dates.filter(function (s) { var d = get(s); return d && d.ex && d.ex[id] && d.ex[id].some(function (x) { return x.d; }); });
-    if (e.bw || !sess.some(function (s) { return topWeight(get(s).ex[id]); })) {
-      var tot = sess.map(function (s) { return get(s).ex[id].reduce(function (a, x) { return a + (x.d ? (+x.r || 0) : 0); }, 0); });
-      bwRows.push([e.n, String(sess.length), tot[0] + " reps", tot[tot.length - 1] + " reps", String(Math.max.apply(null, tot))]);
-      return;
+  if (sec.calendar) {
+    heading("Success calendar");
+    var start = weekStart(from), cell = 22, gap = 4, gx = M + 46;
+    font(8, "bold"); col(MU); ["M", "T", "W", "T", "F", "S", "S"].forEach(function (l, i) { doc.text(l, gx + i * (cell + gap) + cell / 2, y, { align: "center" }); });
+    y += 8;
+    for (var w = start; w <= to; w = addDays(w, 7)) {
+      need(cell + gap);
+      font(8, "normal"); col(MU); doc.text(pdfText(fmtShort(w)), M, y + 14);
+      for (var i = 0; i < 7; i++) {
+        var dd = addDays(w, i), x = gx + i * (cell + gap);
+        if (dd < from || dd > to) continue;
+        var d = get(dd), sc = score(d), rest = isRestDay(dd);
+        var c = sc === 3 ? G : sc === 2 ? [46, 150, 92] : sc === 1 ? [170, 220, 190] : rest ? [236, 238, 240] : (dd < t && tracked(dd)) ? [245, 196, 190] : [248, 249, 250];
+        fill(c); doc.roundedRect(x, y, cell, cell, 3, 3, "F");
+        font(7.5, "bold"); doc.setTextColor(sc >= 2 ? 255 : 60, sc >= 2 ? 255 : 70, sc >= 2 ? 255 : 76); doc.text(String(pd(dd).getDate()), x + cell / 2, y + 14, { align: "center" });
+      }
+      y += cell + gap;
     }
-    var tws = sess.map(function (s) { return topWeight(get(s).ex[id]); }).filter(Boolean), best = 0, bestS = "";
-    sess.forEach(function (s) { get(s).ex[id].forEach(function (x) { var v = e1rm(x.w, x.r); if (x.d && v > best) { best = v; bestS = x.w + "×" + x.r; } }); });
-    var vol = sess.reduce(function (a, s) { return a + get(s).ex[id].reduce(function (b, x) { return b + (x.d ? (+x.w || 0) * (+x.r || 0) : 0); }, 0); }, 0);
-    var ch = tws[tws.length - 1] - tws[0];
-    liftRows.push([e.n, String(sess.length), tws[0] + " lb", tws[tws.length - 1] + " lb", (ch > 0 ? "+" : "") + ch + " lb", bestS + " (~" + best + ")", vol.toLocaleString()]);
-  });
-  heading("Lift progress");
-  if (liftRows.length) table(["Exercise", "Sessions", "First top set", "Last top set", "Change", "Best set (est. 1RM)", "Volume lb"], liftRows, [128, 48, 66, 66, 52, 110, 62]);
-  else { font(10); col(MU); doc.text("No weighted lifts logged in this range.", M, y); y += 16; }
-  if (bwRows.length) { y += 4; table(["Bodyweight exercise", "Sessions", "First", "Last", "Best day"], bwRows, [168, 70, 80, 80, 134]); }
+    y += 4; font(8, "normal"); col(MU);
+    var lx = M; [[G, "All 3 habits"], [[46, 150, 92], "2 of 3"], [[170, 220, 190], "1 of 3"], [[245, 196, 190], "Missed"], [[236, 238, 240], "Rest"]].forEach(function (l) { fill(l[0]); doc.rect(lx, y - 7, 9, 9, "F"); doc.text(l[1], lx + 13, y); lx += 22 + doc.getTextWidth(l[1]) + 10; });
+    y += 14;
+    font(9, "normal"); col(DK); doc.text(pdfText("Habits hit: Lift " + done + "  ·  Cardio " + cardioN + "  ·  Abs " + absN + " days"), M, y); y += 8;
+  }
 
-  // cardio + body weight
-  heading("Cardio");
-  font(10, "normal"); col(DK);
-  doc.text(pdfText(cardio + " minutes over " + cardioN + " sessions" + (cardioN ? " (avg " + Math.round(cardio / cardioN) + " min)" : "")), M, y); y += 14;
-  var calDays = dates.map(function (x) { return dayCalories(get(x)); }).filter(Boolean), wkCal = calDays.reduce(function (a, c) { return a + (c.workout || 0); }, 0), totDays = calDays.filter(function (c) { return c.total; });
-  if (wkCal || totDays.length) { font(10, "normal"); col(DK); doc.text(pdfText("Calories burned (estimates): workouts ~" + wkCal.toLocaleString() + " kcal in total" + (totDays.length ? ", whole-day average ~" + Math.round(totDays.reduce(function (a, c) { return a + c.total; }, 0) / totDays.length).toLocaleString() + " kcal/day" : "")), M, y); y += 14; }
-  var tk = Object.keys(types); if (tk.length) { table(["Type", "Minutes"], tk.sort(function (a, b) { return types[b] - types[a]; }).map(function (k) { return [k, String(types[k])]; }), [200, 100]); }
-  if (bws.length) {
+  var weighted = exList.filter(function (id) { var e = exInfo(id); return !e.bw && sessOf(id).some(function (s) { return topWeight(get(s).ex[id]); }); });
+  var bodyw = exList.filter(function (id) { return weighted.indexOf(id) < 0; });
+  if (sec.lifts) {
+    heading("Lift progress");
+    var liftRows = weighted.map(function (id) {
+      var e = exInfo(id), sess = sessOf(id), tws = sess.map(function (s) { return topWeight(get(s).ex[id]); }).filter(Boolean), best = 0, bestS = "";
+      sess.forEach(function (s) { get(s).ex[id].forEach(function (x) { var v = e1rm(x.w, x.r); if (x.d && v > best) { best = v; bestS = x.w + "×" + x.r; } }); });
+      var vol = sess.reduce(function (a, s) { return a + get(s).ex[id].reduce(function (b, x) { return b + (x.d ? (+x.w || 0) * (+x.r || 0) : 0); }, 0); }, 0), ch = tws[tws.length - 1] - tws[0];
+      return [e.n, String(sess.length), tws[0] + " lb", tws[tws.length - 1] + " lb", (ch > 0 ? "+" : "") + ch + " lb", bestS + " (~" + best + ")", vol.toLocaleString()];
+    });
+    if (liftRows.length) table(["Exercise", "Sessions", "First top set", "Last top set", "Change", "Best set (est. 1RM)", "Volume lb"], liftRows, [128, 48, 66, 66, 52, 110, 62]);
+    else para("No weighted lifts in this selection.", 10, MU);
+    if (bodyw.length) {
+      y += 4;
+      table(["Bodyweight exercise", "Sessions", "First", "Last", "Best day"], bodyw.map(function (id) { var sess = sessOf(id), tot = sess.map(function (s) { return get(s).ex[id].reduce(function (a, x) { return a + (x.d ? (+x.r || 0) : 0); }, 0); }); return [exInfo(id).n, String(sess.length), tot[0] + " reps", tot[tot.length - 1] + " reps", Math.max.apply(null, tot) + " reps"]; }), [168, 70, 80, 80, 134]);
+    }
+  }
+
+  if (sec.charts && weighted.length) {
+    heading("Lift progress charts");
+    var cw2 = (CW - 12) / 2, chH = 120, n = 0;
+    weighted.forEach(function (id) {
+      var pts = sessOf(id).map(function (s) { return { x: fmtShort(s), y: topWeight(get(s).ex[id]) }; }).filter(function (p) { return p.y; });
+      if (!pts.length) return;
+      if (n % 2 === 0) need(chH + 10);
+      miniChart(M + (n % 2) * (cw2 + 12), y, cw2, chH, exInfo(id).n + " - top set", pts, [61, 180, 110], "lb");
+      n++; if (n % 2 === 0) y += chH + 10;
+    });
+    if (n % 2 === 1) y += chH + 10;
+    font(8); col(MU); doc.text("One point per session. A single session shows as one dot.", M, y); y += 8;
+  }
+
+  if (sec.prs && weighted.length) {
+    heading("Personal records (in this range)");
+    var prRows = weighted.map(function (id) {
+      var best = null; sessOf(id).forEach(function (s) { get(s).ex[id].forEach(function (x) { var v = e1rm(x.w, x.r); if (x.d && v && (!best || v > best.v)) best = { v: v, w: x.w, r: x.r, s: s }; }); });
+      var heavy = null; sessOf(id).forEach(function (s) { get(s).ex[id].forEach(function (x) { if (x.d && +x.w && (!heavy || +x.w > +heavy.w)) heavy = { w: x.w, r: x.r, s: s }; }); });
+      return best ? [exInfo(id).n, best.w + " × " + best.r, fmtShort(best.s), "~" + best.v + " lb", heavy.w + " lb (" + fmtShort(heavy.s) + ")"] : null;
+    }).filter(Boolean).sort(function (a, b) { return parseInt(b[3].slice(1)) - parseInt(a[3].slice(1)); });
+    table(["Lift", "Best set", "Date", "Est. 1-rep max", "Heaviest weight"], prRows, [150, 80, 70, 100, 132]);
+  }
+
+  if (sec.cardio) {
+    heading("Cardio");
+    para(cardio + " minutes over " + cardioN + " sessions" + (cardioN ? " (avg " + Math.round(cardio / cardioN) + " min)" : ""));
+    var tk = Object.keys(types); if (tk.length) table(["Type", "Sessions", "Minutes"], tk.sort(function (a, b) { return types[b] - types[a]; }).map(function (k) { return [k, String(dates.filter(function (s) { var d = get(s); return d && d.cardioType === k && +d.cardioMin > 0; }).length), String(types[k])]; }), [200, 100, 100]);
+  }
+
+  if (sec.calories) {
+    var calDays = dates.map(function (x) { return { s: x, c: dayCalories(get(x)) }; }).filter(function (z) { return z.c; });
+    heading("Calories burned (estimates)");
+    if (!calDays.length) para("No calorie data in this range. Add age and height under More > Profile.", 10, MU);
+    else {
+      var wkCal = calDays.reduce(function (a, z) { return a + (z.c.workout || 0); }, 0), totD = calDays.filter(function (z) { return z.c.total; });
+      para("Workouts ~" + wkCal.toLocaleString() + " kcal in total" + (totD.length ? "; whole-day average ~" + Math.round(totD.reduce(function (a, z) { return a + z.c.total; }, 0) / totD.length).toLocaleString() + " kcal/day" : "") + ".");
+      table(["Date", "Lifting", "Cardio", "Workout", "Whole day"], calDays.filter(function (z) { return z.c.workout || z.c.total; }).map(function (z) { return [fmtShort(z.s), z.c.lift ? "~" + z.c.lift : "-", z.c.cardio ? "~" + z.c.cardio : "-", z.c.workout ? "~" + z.c.workout : "-", z.c.total ? z.c.total.toLocaleString() : "-"]; }), [110, 100, 100, 100, 122]);
+    }
+  }
+
+  if (sec.bodyweight && bws.length) {
     heading("Body weight");
-    font(10); col(DK); doc.text(pdfText("Start " + bws[0].w + " lb (" + fmtShort(bws[0].d) + ")  ->  latest " + bws[bws.length - 1].w + " lb (" + fmtShort(bws[bws.length - 1].d) + ")" + (S.settings.bodyGoal ? "   ·   goal " + S.settings.bodyGoal + " lb" : "")), M, y); y += 10;
-    if (bws.length > 1) {
-      need(110); var ch_ = 90, cx = M, cwid = CW, mn = Math.min.apply(null, bws.map(function (b) { return b.w; })), mx = Math.max.apply(null, bws.map(function (b) { return b.w; }));
-      if (mn === mx) { mn -= 2; mx += 2; }
-      doc.setDrawColor(LN[0], LN[1], LN[2]); doc.setLineWidth(0.5); doc.rect(cx, y, cwid, ch_);
-      doc.setDrawColor(230, 150, 40); doc.setLineWidth(1.6);
-      var span = Math.max(1, daysBetween(bws[0].d, bws[bws.length - 1].d));
-      for (var k = 1; k < bws.length; k++) { var x1 = cx + 8 + (cwid - 16) * daysBetween(bws[0].d, bws[k - 1].d) / span, x2 = cx + 8 + (cwid - 16) * daysBetween(bws[0].d, bws[k].d) / span; var y1 = y + 8 + (ch_ - 16) * (1 - (bws[k - 1].w - mn) / (mx - mn)), y2 = y + 8 + (ch_ - 16) * (1 - (bws[k].w - mn) / (mx - mn)); doc.line(x1, y1, x2, y2); }
-      font(7.5); col(MU); doc.text(String(mx), cx - 4, y + 10, { align: "right" }); doc.text(String(mn), cx - 4, y + ch_ - 4, { align: "right" });
-      y += ch_ + 12;
+    para("Start " + bws[0].w + " lb (" + fmtShort(bws[0].d) + ")  ->  latest " + bws[bws.length - 1].w + " lb (" + fmtShort(bws[bws.length - 1].d) + ")" + (S.settings.bodyGoal ? "   ·   goal " + S.settings.bodyGoal + " lb" : ""));
+    if (bws.length > 1) { need(130); miniChart(M, y, CW, 120, "Body weight (lb)", bws.map(function (b) { return { x: fmtShort(b.d), y: b.w }; }), [230, 150, 40], "lb"); y += 130; }
+  }
+
+  if (sec.health) {
+    var hds = dates.filter(function (x) { var d = get(x); return d && d.health; }).map(function (x) { return get(x); });
+    if (hds.length) {
+      heading("Health (from Samsung Health)");
+      var stat = function (fn, unit, dec) { var v = hds.map(fn).filter(function (x) { return x != null && isFinite(x) && x > 0; }); if (!v.length) return null; var f = function (n) { return dec ? n.toFixed(dec) : Math.round(n).toLocaleString(); }; return [f(v.reduce(function (a, c) { return a + c; }, 0) / v.length) + unit, f(Math.min.apply(null, v)) + unit, f(Math.max.apply(null, v)) + unit, String(v.length)]; };
+      var rowsH = [["Resting heart rate", function (d) { return d.health.restingHr; }, " bpm"], ["Average heart rate", function (d) { return d.health.hr && d.health.hr.avg; }, " bpm"], ["Max heart rate", function (d) { return d.health.hr && d.health.hr.max; }, " bpm"], ["Steps per day", function (d) { return d.health.steps; }, ""], ["Active calories", function (d) { return d.health.activeCal; }, " kcal"], ["Sleep per night", function (d) { return d.health.sleep && d.health.sleep.min / 60; }, " h", 1], ["Blood oxygen", function (d) { return d.health.spo2; }, "%", 1], ["HRV", function (d) { return d.health.hrv; }, " ms"]].map(function (r) { var st = stat(r[1], r[2], r[3]); return st ? [r[0]].concat(st) : null; }).filter(Boolean);
+      if (rowsH.length) table(["Measure", "Average", "Lowest", "Highest", "Days"], rowsH, [170, 92, 92, 92, 86]);
+      var rhp = dates.filter(function (x) { var d = get(x); return d && d.health && d.health.restingHr; }).map(function (x) { return { x: fmtShort(x), y: get(x).health.restingHr }; });
+      if (rhp.length > 1) { need(130); miniChart(M, y, CW, 120, "Resting heart rate (bpm)", rhp, [229, 103, 91], "bpm"); y += 130; }
+      var hw = []; dates.forEach(function (x) { var d = get(x); if (d && d.health && d.health.workouts) d.health.workouts.forEach(function (w) { hw.push([fmtShort(x), w.name, w.min + " min", w.avgHr ? w.avgHr + " / " + w.maxHr + " bpm" : "-", w.kcal ? w.kcal + " kcal" : "-"]); }); });
+      if (hw.length) { y += 4; table(["Date", "Recorded workout", "Time", "Avg / max HR", "Calories"], hw, [70, 170, 70, 120, 102]); }
     }
   }
 
-  // health
-  var hds = dates.filter(function (x) { var d = get(x); return d && d.health; }).map(function (x) { return get(x); });
-  if (hds.length) {
-    heading("Health (from Samsung Health)");
-    function stat(fn, unit, dec) { var v = hds.map(fn).filter(function (x) { return x != null && isFinite(x) && x > 0; }); if (!v.length) return null; var f = function (n) { return dec ? n.toFixed(dec) : Math.round(n).toLocaleString(); }; return [f(v.reduce(function (a, c) { return a + c; }, 0) / v.length) + unit, f(Math.min.apply(null, v)) + unit, f(Math.max.apply(null, v)) + unit, String(v.length)]; }
-    var rowsH = [["Resting heart rate", function (d) { return d.health.restingHr; }, " bpm"], ["Average heart rate", function (d) { return d.health.hr && d.health.hr.avg; }, " bpm"], ["Max heart rate", function (d) { return d.health.hr && d.health.hr.max; }, " bpm"], ["Steps per day", function (d) { return d.health.steps; }, ""], ["Active calories", function (d) { return d.health.activeCal; }, " kcal"], ["Sleep per night", function (d) { return d.health.sleep && d.health.sleep.min / 60; }, " h", 1], ["Blood oxygen", function (d) { return d.health.spo2; }, "%", 1], ["HRV", function (d) { return d.health.hrv; }, " ms"]].map(function (r) { var st = stat(r[1], r[2], r[3]); return st ? [r[0]].concat(st) : null; }).filter(Boolean);
-    if (rowsH.length) table(["Measure", "Average", "Lowest", "Highest", "Days"], rowsH, [170, 92, 92, 92, 86]);
-    var hw = []; dates.forEach(function (x) { var d = get(x); if (d && d.health && d.health.workouts) d.health.workouts.forEach(function (w) { hw.push([fmtShort(x), w.name, w.min + " min", w.avgHr ? w.avgHr + " / " + w.maxHr + " bpm" : "-", w.kcal ? w.kcal + " kcal" : "-"]); }); });
-    if (hw.length) { y += 4; table(["Date", "Recorded workout", "Time", "Avg / max HR", "Calories"], hw, [70, 170, 70, 120, 102]); }
-  }
-
-  // session log
-  if (includeLog) {
+  if (sec.log) {
     need(190); heading("Session log");
+    var any = false;
     dates.slice().reverse().forEach(function (s) {
-      var d = get(s); if (!d || (!score(d) && !Object.keys(d.ex || {}).length && !d.notes && !d.health)) return;
+      var d = get(s); if (!d) return;
       var W = dayWorkout(d), lines = [];
-      if (+d.cardioMin > 0) lines.push("Cardio: " + d.cardioMin + " min " + d.cardioType.toLowerCase());
+      if (+d.cardioMin > 0 && ctOk(d.cardioType)) lines.push("Cardio: " + d.cardioMin + " min " + String(d.cardioType).toLowerCase());
       var order = []; if (W) W.groups.forEach(function (g) { g.ex.forEach(function (e) { order.push(e.id); }); });
       Object.keys(d.ex || {}).forEach(function (id) { if (order.indexOf(id) < 0) order.push(id); });
+      var exLines = 0;
       order.forEach(function (id) {
+        if (!exOk(id)) return;
         var sets = (d.ex || {})[id]; if (!sets) return; var dn = sets.filter(function (x) { return x.d; }); if (!dn.length) return;
         var e = exInfo(id), txt;
         if (e.bw || !dn.some(function (x) { return +x.w; })) { var tot = dn.reduce(function (a, x) { return a + (+x.r || 0); }, 0); txt = dn.length > 6 ? (tot + " reps in " + dn.length + " sets") : (dn.map(function (x) { return x.r; }).join(", ") + " reps (" + tot + " total)"); }
         else txt = dn.map(function (x) { return x.w + "×" + x.r; }).join(", ");
-        var xh2 = d.liftHr && d.liftHr.ex && d.liftHr.ex[id]; if (xh2) txt += "   (HR avg " + xh2.avg + ", peak " + xh2.max + ")"; var xc2 = exCalories(d, e); if (xc2) txt += "   ~" + xc2.kcal + " kcal";
-        lines.push(e.n + ": " + txt);
+        if (sec.hr) { var xh2 = d.liftHr && d.liftHr.ex && d.liftHr.ex[id]; if (xh2) txt += "   (HR avg " + xh2.avg + ", peak " + xh2.max + ")"; var xc2 = exCalories(d, e); if (xc2) txt += "   ~" + xc2.kcal + " kcal"; }
+        lines.push(e.n + ": " + txt); exLines++;
       });
-      var dc2 = dayCalories(d); if (dc2) lines.push("Calories: " + (dc2.total ? dc2.total.toLocaleString() + " total for the day, " : "") + "workout ~" + dc2.workout + " (lifting " + dc2.lift + ", cardio " + dc2.cardio + ")");
-      if (d.bodyWeight) lines.push("Body weight: " + d.bodyWeight + " lb");
-      if (d.health) { var hh = d.health, hp = []; if (hh.restingHr) hp.push("resting HR " + hh.restingHr); if (hh.hr) hp.push("HR avg " + hh.hr.avg + " / max " + hh.hr.max); if (hh.steps) hp.push(hh.steps.toLocaleString() + " steps"); if (hh.sleep) hp.push("sleep " + fmtMin(hh.sleep.min)); if (hh.spo2) hp.push("SpO2 " + hh.spo2 + "%"); if (hp.length) lines.push("Health: " + hp.join(", ")); if (d.liftHr && d.liftHr.avg) lines.push("Lifting session: " + Math.round((d.liftHr.end - d.liftHr.start) / 60000) + " min, HR avg " + d.liftHr.avg + " / max " + d.liftHr.max); (hh.workouts || []).forEach(function (w) { lines.push("Watch: " + w.name + " " + w.min + " min" + (w.avgHr ? ", avg " + w.avgHr + " / max " + w.maxHr + " bpm" : "") + (w.kcal ? ", " + w.kcal + " kcal" : "")); }); }
+      if (exX.length && !exLines && !(+d.cardioMin > 0)) return; // nothing selected happened this day
+      if (sec.calories) { var dc2 = dayCalories(d); if (dc2) lines.push("Calories: " + (dc2.total ? dc2.total.toLocaleString() + " total for the day, " : "") + "workout ~" + dc2.workout); }
+      if (sec.bodyweight && d.bodyWeight) lines.push("Body weight: " + d.bodyWeight + " lb");
+      if (sec.health && d.health) { var hh = d.health, hp = []; if (hh.restingHr) hp.push("resting HR " + hh.restingHr); if (hh.hr) hp.push("HR avg " + hh.hr.avg + " / max " + hh.hr.max); if (hh.steps) hp.push(hh.steps.toLocaleString() + " steps"); if (hh.sleep) hp.push("sleep " + fmtMin(hh.sleep.min)); if (hh.spo2) hp.push("SpO2 " + hh.spo2 + "%"); if (hp.length) lines.push("Health: " + hp.join(", ")); if (sec.hr && d.liftHr && d.liftHr.avg) lines.push("Lifting session: " + Math.round((d.liftHr.end - d.liftHr.start) / 60000) + " min, HR avg " + d.liftHr.avg + " / max " + d.liftHr.max); }
+      var notes = sec.notes && d.notes ? doc.splitTextToSize(pdfText("Notes: " + d.notes), CW - 14) : [];
+      if (!lines.length && !notes.length && !score(d)) return;
+      any = true;
       font(9.5, "normal"); var wrapped = []; lines.forEach(function (l) { wrapped = wrapped.concat(doc.splitTextToSize(pdfText(l), CW - 14)); });
-      var notes = d.notes ? doc.splitTextToSize(pdfText("Notes: " + d.notes), CW - 14) : [];
       need(22 + wrapped.length * 12 + notes.length * 12);
       fill([244, 247, 245]); doc.rect(M, y - 11, CW, 17, "F");
       font(10.5, "bold"); col(DK); doc.text(pdfText(fmtLong(s) + "  ·  " + (d.workout === "rest" ? "Rest day" : (/^\d+$/.test(d.workout) ? "Workout #" + d.workout : d.workout)) + (W && W.focus && d.workout !== "rest" ? " (" + W.focus + ")" : "")), M + 6, y + 1);
@@ -682,10 +902,11 @@ function buildReport(from, to, includeLog) {
       if (notes.length) { font(9, "italic"); col(MU); notes.forEach(function (l) { doc.text(l, M + 8, y); y += 12; }); }
       y += 8;
     });
+    if (!any) para("Nothing logged for this selection.", 10, MU);
   }
-  // footer page numbers
-  var n = doc.getNumberOfPages();
-  for (var pg = 1; pg <= n; pg++) { doc.setPage(pg); font(8); col(MU); doc.text("Training Log  ·  page " + pg + " of " + n, PW / 2, 776, { align: "center" }); }
+
+  var n2 = doc.getNumberOfPages();
+  for (var pg = 1; pg <= n2; pg++) { doc.setPage(pg); font(8); col(MU); doc.text(pdfText((o.title || "Training Report") + "  ·  page " + pg + " of " + n2), PW / 2, 776, { align: "center" }); }
   return doc;
 }
 
@@ -951,8 +1172,13 @@ function onAct(b, ev) {
     case "psave": return saveEditor();
     case "preset": confirmSheet("Reset Level I?", "This puts the exercises and schedule back to the book version. Your logged sessions aren't touched.", "Reset", function () { var b0 = clone(TP.BUILTIN[0]); S.programs["level-1"] = b0; compileAll(); save(); scheduleReminders(); render(); toast("Reset to the book version"); }); return;
     case "pdel": var did = editing.id; confirmSheet("Delete " + S.programs[did].name + "?", "Logged sessions stay in your history.", "Delete", function () { delete S.programs[did]; S.programHistory = S.programHistory.filter(function (x) { return x.programId !== did; }); editing = null; compileAll(); save(); render(); }, true); return;
-    case "rrange": ui.reportRange = b.getAttribute("data-v"); return render();
-    case "report": return makeReport(b);
+    case "openreport": return openReportBuilder();
+    case "rpreset": case "rrange2": case "rwk": case "rct": case "rexall": case "rexnone": case "rmake": return reportSheetAct(act, b);
+    case "ropen": if (lastPdf && lastPdf.uri && P.SaveFile) P.SaveFile.open({ uri: lastPdf.uri, mimeType: "application/pdf" }).catch(function (e) { toast((e && e.message) || "Couldn't open the PDF"); }); return;
+    case "rshare": return sharePdf();
+    case "rback": return openReportBuilder();
+    case "setmenu": return setMenu(b.getAttribute("data-ex"), +b.getAttribute("data-i"));
+    case "setdel": var dd2 = ensure(ui.cur), e3 = findInDay(dd2, b.getAttribute("data-ex")), ss = getSets(dd2, e3), ix2 = +b.getAttribute("data-i"); if (ss.length > 1) ss.splice(ix2, 1); else ss[0] = { w: "", r: "", d: false }; closeSheet(); save(); toast("Set removed"); return render();
     case "rday": var v = +b.getAttribute("data-v"), arr = S.settings.remindDays, ix = arr.indexOf(v); if (ix >= 0) arr.splice(ix, 1); else arr.push(v); save(); scheduleReminders(); return render();
     case "export": var name = "training-log-backup-" + todayS() + ".json"; return shareFile(name, JSON.stringify(S, null, 1), "application/json", true);
     case "import": return document.getElementById("importFile").click();
@@ -981,6 +1207,12 @@ function onAct(b, ev) {
       if (exDone(e, sets)) rest = Math.max(rest, S.settings.restSec);
       startTimer(+rest);
     } else s.d = false;
+  }
+  else if (act === "rmset") {
+    var e4 = findInDay(d, b.getAttribute("data-ex")), s4 = getSets(d, e4), last = s4[s4.length - 1];
+    if (s4.length <= 1) return;
+    if (last.d || last.w || last.r) return setMenu(e4.id, s4.length - 1);
+    s4.pop(); toast("Set removed");
   }
   else if (act === "addset") { var e2 = findInDay(d, b.getAttribute("data-ex")); getSets(d, e2).push({ w: "", r: "", d: false }); }
   else return;
@@ -1050,17 +1282,6 @@ function saveEditor() {
   compileAll(); save(); closeSheet(); scheduleReminders(); render();
   if (wasNew) confirmSheet("Program saved", "Start using <b>" + esc(p.name) + "</b> now?", "Use it", function () { useProgram(nid); });
   else toast("Program saved");
-}
-function makeReport(btn) {
-  var r = reportRange(), incl = ui.rLog !== false;
-  btn.disabled = true; btn.textContent = "Building report…";
-  setTimeout(function () {
-    try {
-      var doc = buildReport(r[0], r[1], incl), name = "Training-Report_" + r[0] + "_to_" + r[1] + ".pdf";
-      var b64 = doc.output("datauristring").split(",")[1];
-      shareFile(name, b64, "application/pdf", false).then(function () { btn.disabled = false; btn.textContent = "Create PDF report"; });
-    } catch (e) { btn.disabled = false; btn.textContent = "Create PDF report"; toast("Report failed: " + e.message); console.error(e); }
-  }, 30);
 }
 
 // Android back button + app lifecycle
