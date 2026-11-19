@@ -125,3 +125,5 @@ label.sw input{width:22px;height:22px;accent-color:var(--acc)}
 .setn:active{border-color:var(--line)}
 .setbtns{display:flex;gap:8px}
 .setbtns .addset{flex:1}
+.exnote{margin-top:10px}
+.exnote-in{font-size:14px;min-height:0;padding:9px 10px;resize:none}

@@ -3,7 +3,7 @@
 var TP = window.TL_PROGRAMS;
 var Cap = window.Capacitor, isNative = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 var P = (Cap && Cap.Plugins) || {};
-var APP_VERSION = "1.4.0";
+var APP_VERSION = "1.5.0";
 
 // ================= Dates =================
 var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -252,8 +252,19 @@ function exerciseGroup(d, g) {
       h += '<input type="number" inputmode="numeric" data-ex="' + e.id + '" data-i="' + i + '" data-f="r" value="' + esc(s.r) + '" placeholder="' + (tr || "max") + '">';
       h += '<button class="chk' + (s.d ? " on" : "") + '" data-act="set" data-ex="' + e.id + '" data-i="' + i + '">✓</button></div>';
     });
-    h += '</div><div class="setbtns"><button class="addset" data-act="addset" data-ex="' + e.id + '">+ Add set</button>' + (sets.length > 1 ? '<button class="addset" data-act="rmset" data-ex="' + e.id + '">− Remove set</button>' : '') + '</div><div class="small mute" style="margin-top:4px">Tip: tap a set number to remove that set.</div></div>';
+    h += '</div><div class="setbtns"><button class="addset" data-act="addset" data-ex="' + e.id + '">+ Add set</button>' + (sets.length > 1 ? '<button class="addset" data-act="rmset" data-ex="' + e.id + '">− Remove set</button>' : '') + '</div><div class="small mute" style="margin-top:4px">Tip: tap a set number to remove that set.</div>' + exNoteBox(d, e) + '</div>';
   });
+  return h;
+}
+function lastNoteFor(exId, before) {
+  var keys = Object.keys(S.days).filter(function (k) { return k < before; }).sort().reverse();
+  for (var i = 0; i < keys.length; i++) { var n = (S.days[keys[i]].exNotes || {})[exId]; if (n && n.trim()) return { date: keys[i], text: n }; }
+  return null;
+}
+function exNoteBox(d, e) {
+  var cur = (d.exNotes || {})[e.id] || "", ln = lastNoteFor(e.id, d.date), h = '<div class="exnote">';
+  if (ln) h += '<div class="small" style="color:var(--blue);margin-bottom:4px">📝 Last time (' + fmtShort(ln.date) + '): ' + esc(ln.text) + '</div>';
+  h += '<textarea class="field exnote-in" rows="' + (cur ? Math.min(6, cur.split("\n").length + 1) : 1) + '" data-exnote="' + e.id + '" placeholder="📝 Notes for this exercise: how it felt, form, seat or pin settings…">' + esc(cur) + '</textarea></div>';
   return h;
 }
 function setMenu(exId, i) {
@@ -521,7 +532,7 @@ var REPORT_SECTIONS = [
   ["health", "Samsung Health stats", "Heart rate, steps, sleep, blood oxygen, watch workouts"],
   ["log", "Session-by-session log", "Every set of every day"],
   ["hr", "Heart rate & calories per exercise", "Shown in the session log"],
-  ["notes", "Your notes", "Shown in the session log"]
+  ["notes", "Your notes", "Day notes and exercise notes, in the session log"]
 ];
 var REPORT_PRESETS = {
   full: { label: "Full report", on: ["summary", "calendar", "lifts", "charts", "prs", "cardio", "calories", "bodyweight", "health", "log", "hr", "notes"] },
@@ -884,6 +895,7 @@ function buildReport(o) {
         else txt = dn.map(function (x) { return x.w + "×" + x.r; }).join(", ");
         if (sec.hr) { var xh2 = d.liftHr && d.liftHr.ex && d.liftHr.ex[id]; if (xh2) txt += "   (HR avg " + xh2.avg + ", peak " + xh2.max + ")"; var xc2 = exCalories(d, e); if (xc2) txt += "   ~" + xc2.kcal + " kcal"; }
         lines.push(e.n + ": " + txt); exLines++;
+        if (sec.notes && d.exNotes && d.exNotes[id]) lines.push("      Note: " + d.exNotes[id].replace(/\s*\n\s*/g, " / "));
       });
       if (exX.length && !exLines && !(+d.cardioMin > 0)) return; // nothing selected happened this day
       if (sec.calories) { var dc2 = dayCalories(d); if (dc2) lines.push("Calories: " + (dc2.total ? dc2.total.toLocaleString() + " total for the day, " : "") + "workout ~" + dc2.workout); }
@@ -1228,6 +1240,7 @@ view.addEventListener("input", function (ev) {
   if (t.id === "cardioMin") { var dc = ensure(ui.cur); dc.cardioMin = Math.max(0, +t.value || 0); dc.cardioManual = true; delete dc.cardioSrc; save(); return; }
   if (t.id === "bodyWeight") { ensure(ui.cur).bodyWeight = t.value ? +t.value : null; save(); return; }
   if (t.id === "notes") { ensure(ui.cur).notes = t.value; save(); return; }
+  if (t.hasAttribute && t.hasAttribute("data-exnote")) { var dn = ensure(ui.cur); dn.exNotes = dn.exNotes || {}; if (t.value.trim()) dn.exNotes[t.getAttribute("data-exnote")] = t.value; else delete dn.exNotes[t.getAttribute("data-exnote")]; t.rows = Math.min(6, Math.max(1, t.value.split("\n").length + (t.value ? 1 : 0))); save(); return; }
   if (t.id === "pfName") { S.settings.name = t.value; save(); return; }
   if (t.id === "bodyGoal") { S.settings.bodyGoal = t.value ? +t.value : null; save(); return; }
   if (t.id === "pfAge") { S.settings.age = t.value ? +t.value : null; save(); return; }
